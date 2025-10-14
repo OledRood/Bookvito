@@ -1,42 +1,43 @@
-# Multi-stage build for optimal image size
+# Этап 1: Сборка приложения (Builder)
+# Используем образ с нужной версией Go (1.23), как указано в go.mod
+FROM golang:1.23-alpine AS builder
 
-# Stage 1: Build
-FROM golang:1.21-alpine AS builder
+# Устанавливаем необходимые для сборки утилиты
+RUN apk add --no-cache git build-base
 
-# Install build dependencies
-RUN apk add --no-cache git
-
-# Set working directory
+# Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
 
-# Copy go mod files
+# Копируем файлы зависимостей и загружаем их
+# Это кэширует зависимости, и они не будут скачиваться каждый раз, если go.mod/go.sum не менялись
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
+# Копируем исходный код проекта
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/api
+# Убедимся что go.sum актуален
+RUN go mod tidy
 
-# Stage 2: Run
+# Собираем бинарный файл приложения
+# CGO_ENABLED=0 отключает Cgo, что делает бинарник статически скомпонованным
+# Флаги -w -s уменьшают размер бинарного файла
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags="-w -s" -o /app/main ./cmd/api
+
+# Этап 2: Финальный образ (Final)
+# Используем минимальный образ alpine для уменьшения размера финального образа
 FROM alpine:latest
 
-# Install ca-certificates for HTTPS requests
+# Добавляем ca-certificates для HTTPS запросов
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /root/
+# Создаем пользователя без прав root для безопасности
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Copy the binary from builder
+WORKDIR /app
 COPY --from=builder /app/main .
+RUN chown appuser:appgroup /app/main
+USER appuser
 
-# Copy .env file if needed (optional, better to use environment variables)
-# COPY --from=builder /app/.env .
-
-# Expose port
 EXPOSE 8080
-
-# Run the application
 CMD ["./main"]

@@ -1,5 +1,4 @@
 package usecase
-package usecase
 
 import (
 	"bookvito/internal/domain"
