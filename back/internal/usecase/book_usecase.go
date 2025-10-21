@@ -3,101 +3,189 @@ package usecase
 import (
 	"bookvito/internal/domain"
 	"errors"
+
+	"github.com/google/uuid"
 )
 
 type BookUseCase struct {
-	bookRepo domain.BookRepository
+	bookRepo            domain.BookRepository
+	movementHistoryRepo domain.BookMovementHistoryRepository
+	exchangeUseCaseRepo domain.ExchangeRepository
 }
 
-// NewBookUseCase creates a new book use case
-func NewBookUseCase(bookRepo domain.BookRepository) *BookUseCase {
+func NewBookUseCase(bookRepo domain.BookRepository, movementHistoryRepo domain.BookMovementHistoryRepository, exchangeUseCaseRepo domain.ExchangeRepository) *BookUseCase {
 	return &BookUseCase{
-		bookRepo: bookRepo,
+		bookRepo:            bookRepo,
+		movementHistoryRepo: movementHistoryRepo,
+		exchangeUseCaseRepo: exchangeUseCaseRepo,
 	}
 }
 
 // CreateBook creates a new book
-func (uc *BookUseCase) CreateBook(title, author, isbn, description, condition string, ownerID uint) (*domain.Book, error) {
-	book := &domain.Book{
-		Title:       title,
-		Author:      author,
-		ISBN:        isbn,
-		Description: description,
-		Condition:   condition,
-		OwnerID:     ownerID,
-		Available:   true,
-	}
+func (uc *BookUseCase) CreateBook(book *domain.Book) error {
 
 	if err := uc.bookRepo.Create(book); err != nil {
-		return nil, err
+		return err
 	}
 
-	return book, nil
+	// Создаем запись в истории перемещений
+	movement := &domain.BookMovementHistory{
+		BookID:         book.ID,
+		ToLocationID:   book.CurrentLocationID,
+		UserID:         &book.OwnerID,
+		Action:         "created",
+		Notes:          "Книга добавлена в систему",
+		PreviousStatus: "",
+		NewStatus:      domain.BookAvailable,
+	}
+
+	if err := uc.movementHistoryRepo.Create(movement); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// GetBookByID retrieves a book by ID
-func (uc *BookUseCase) GetBookByID(id uint) (*domain.Book, error) {
+func (uc *BookUseCase) GetSummaryBooksList() ([]*domain.BookSummary, error) {
+	return uc.bookRepo.GetSummaryList(100, 0)
+}
+
+func (uc *BookUseCase) GetBooksList() ([]*domain.Book, error) {
+	return uc.bookRepo.List(100, 0)
+}
+
+func (uc *BookUseCase) GetBookByID(id uuid.UUID) (*domain.Book, error) {
 	return uc.bookRepo.GetByID(id)
 }
 
-// GetBooksByOwner retrieves all books owned by a user
-func (uc *BookUseCase) GetBooksByOwner(ownerID uint) ([]*domain.Book, error) {
-	return uc.bookRepo.GetByOwnerID(ownerID)
-}
-
-// UpdateBook updates book information
-func (uc *BookUseCase) UpdateBook(book *domain.Book) error {
-	return uc.bookRepo.Update(book)
-}
-
-// DeleteBook deletes a book
-func (uc *BookUseCase) DeleteBook(id uint, ownerID uint) error {
-	book, err := uc.bookRepo.GetByID(id)
+func (uc *BookUseCase) DeleteBook(bookID, userID uuid.UUID) error {
+	book, err := uc.bookRepo.GetByID(bookID)
 	if err != nil {
 		return err
 	}
 
-	// Check if the user is the owner
-	if book.OwnerID != ownerID {
-		return errors.New("unauthorized: you can only delete your own books")
-	}
+	previousStatus := book.Status
 
-	return uc.bookRepo.Delete(id)
-}
+	book.Status = domain.BookDeleted
 
-// ListBooks retrieves a list of books
-func (uc *BookUseCase) ListBooks(limit, offset int) ([]*domain.Book, error) {
-	return uc.bookRepo.List(limit, offset)
-}
-
-// SearchBooks searches for books by title, author, or description
-func (uc *BookUseCase) SearchBooks(query string, limit, offset int) ([]*domain.Book, error) {
-	return uc.bookRepo.Search(query, limit, offset)
-}
-
-// GetAvailableBooks retrieves all available books
-func (uc *BookUseCase) GetAvailableBooks(limit, offset int) ([]*domain.Book, error) {
-	return uc.bookRepo.GetAvailable(limit, offset)
-}
-
-// MarkBookAsUnavailable marks a book as unavailable
-func (uc *BookUseCase) MarkBookAsUnavailable(id uint) error {
-	book, err := uc.bookRepo.GetByID(id)
-	if err != nil {
+	if err := uc.bookRepo.Update(book); err != nil {
 		return err
 	}
 
-	book.Available = false
-	return uc.bookRepo.Update(book)
+	// 5. Создаем запись в истории об этом событии
+	movement := &domain.BookMovementHistory{
+		BookID:         bookID,
+		UserID:         &userID, // Пользователь, который выполнил действие
+		Action:         "deleted",
+		PreviousStatus: previousStatus,
+		NewStatus:      domain.BookDeleted,
+	}
+
+	// 6. Сохраняем запись в истории
+	return uc.movementHistoryRepo.Create(movement)
 }
 
-// MarkBookAsAvailable marks a book as available
-func (uc *BookUseCase) MarkBookAsAvailable(id uint) error {
-	book, err := uc.bookRepo.GetByID(id)
+func (uc *BookUseCase) GetBookMovementHistory(bookID uuid.UUID) ([]*domain.BookMovementHistory, error) {
+	return uc.movementHistoryRepo.GetByBookID(bookID)
+}
+
+func (uc *BookUseCase) Request(bookID uuid.UUID, userID uuid.UUID) error {
+	book, err := uc.bookRepo.GetByID(bookID)
 	if err != nil {
 		return err
 	}
+	if book.Status != domain.BookAvailable {
+		return errors.New("book is not available for request")
+	}
 
-	book.Available = true
-	return uc.bookRepo.Update(book)
+	book.Status = domain.BookRequested
+	if err := uc.bookRepo.Update(book); err != nil {
+		return err
+	}
+
+	// Создаем запись в истории перемещений
+	movement := &domain.BookMovementHistory{
+		BookID:         book.ID,
+		UserID:         &userID,
+		Action:         "requested",
+		PreviousStatus: domain.BookAvailable,
+		NewStatus:      domain.BookRequested,
+		Notes:          "Book requested by user",
+	}
+	if err := uc.movementHistoryRepo.Create(movement); err != nil {
+		return err
+	}
+
+	if err := uc.exchangeUseCaseRepo.Create(&domain.Exchange{
+		UserID: userID,
+		BookID: bookID,
+		Status: domain.ExchangeRequested,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (uc *BookUseCase) Borrow(bookID uuid.UUID, userID uuid.UUID) error {
+	book, err := uc.bookRepo.GetByID(bookID)
+	if err != nil {
+		return err
+	}
+	if book.Status != domain.BookRequested {
+		return errors.New("book is not available for borrowing")
+	}
+
+	book.Status = domain.BookBorrowed
+	if err := uc.bookRepo.Update(book); err != nil {
+		return err
+	}
+
+	// Создаем запись в истории перемещений
+	movement := &domain.BookMovementHistory{
+		BookID:         book.ID,
+		UserID:         &userID,
+		Action:         "borrowed",
+		PreviousStatus: domain.BookAvailable,
+		NewStatus:      domain.BookBorrowed,
+		Notes:          "Book borrowed by user",
+	}
+	if err := uc.movementHistoryRepo.Create(movement); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (uc *BookUseCase) Return(bookID uuid.UUID, userID uuid.UUID) error {
+	book, err := uc.bookRepo.GetByID(bookID)
+	if err != nil {
+		return err
+	}
+	if book.Status != domain.BookBorrowed {
+		return errors.New("book is not currently borrowed")
+	}
+
+	book.Status = domain.BookAvailable
+	if err := uc.bookRepo.Update(book); err != nil {
+		return err
+	}
+
+	// Создаем запись в истории перемещений
+	movement := &domain.BookMovementHistory{
+		BookID:         book.ID,
+		UserID:         &userID,
+		Action:         "returned",
+		PreviousStatus: domain.BookBorrowed,
+		NewStatus:      domain.BookAvailable,
+		Notes:          "Book returned by user",
+	}
+	if err := uc.movementHistoryRepo.Create(movement); err != nil {
+		return err
+	}
+	if err := uc.exchangeUseCaseRepo.Delete(bookID); err != nil {
+		return err
+	}
+
+	return nil
 }

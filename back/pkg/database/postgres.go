@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// NewPostgresDB creates a new PostgreSQL database connection
+// Создает новое подключение к базе данных PostgreSQL
 func NewPostgresDB(cfg *config.Config) (*gorm.DB, error) {
 	dsn := fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
@@ -29,11 +29,14 @@ func NewPostgresDB(cfg *config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
-// AutoMigrate runs database migrations
+// Автоматическая миграция схемы базы данных
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
+		&domain.Location{},
 		&domain.User{},
 		&domain.Book{},
 		&domain.Exchange{},
+		&domain.Review{},
+		&domain.BookMovementHistory{},
 	)
 }

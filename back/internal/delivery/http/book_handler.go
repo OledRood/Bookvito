@@ -1,32 +1,31 @@
 package http
 
 import (
-	"bookvito/internal/usecase"
+	"bookvito/internal/domain"
 	"net/http"
-	"strconv"
 
+	// "strconv"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type BookHandler struct {
-	bookUC *usecase.BookUseCase
+	bookUC domain.BookUseCase
 }
 
-// NewBookHandler creates a new book handler
-func NewBookHandler(bookUC *usecase.BookUseCase) *BookHandler {
+func NewBookHandler(bookUC domain.BookUseCase) *BookHandler {
 	return &BookHandler{bookUC: bookUC}
 }
 
 type CreateBookRequest struct {
-	Title       string `json:"title" binding:"required"`
-	Author      string `json:"author" binding:"required"`
-	ISBN        string `json:"isbn"`
-	Description string `json:"description"`
-	Condition   string `json:"condition" binding:"required"`
-	OwnerID     uint   `json:"owner_id" binding:"required"`
+	Title             string               `json:"title" binding:"required"`
+	Author            string               `json:"author" binding:"required"`
+	Description       string               `json:"description"`
+	Condition         domain.BookCondition `json:"condition" binding:"required,oneof=excellent good bad"`
+	ImageURL          string               `json:"image_url"`
+	CurrentLocationID *uuid.UUID           `json:"current_location_id"`
 }
 
-// Create creates a new book
 func (h *BookHandler) Create(c *gin.Context) {
 	var req CreateBookRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -34,25 +33,70 @@ func (h *BookHandler) Create(c *gin.Context) {
 		return
 	}
 
-	book, err := h.bookUC.CreateBook(req.Title, req.Author, req.ISBN, req.Description, req.Condition, req.OwnerID)
+	userIdRaw, exists := c.Get("userId")
+	println("UserID from context:", userIdRaw)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	userIDStr, ok := userIdRaw.(string)
+	if !ok || userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID in token"})
+		return
+	}
+
+	err := h.bookUC.CreateBook(&domain.Book{
+		Title:             req.Title,
+		Author:            req.Author,
+		Description:       req.Description,
+		Condition:         req.Condition,
+		ImageURL:          req.ImageURL,
+		CurrentLocationID: req.CurrentLocationID,
+		OwnerID:           uuid.MustParse(userIDStr),
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, book)
+	c.JSON(http.StatusCreated, gin.H{"message": "book created successfully"})
 }
 
-// GetByID retrieves a book by ID
+func (h *BookHandler) GetSummaryList(c *gin.Context) {
+	books, err := h.bookUC.GetSummaryBooksList()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, books)
+}
+
+func (h *BookHandler) GetList(c *gin.Context) {
+	books, err := h.bookUC.GetBooksList()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, books)
+}
+
 func (h *BookHandler) GetByID(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	idParam := c.Param("id")
+	bookID, err := uuid.Parse(idParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book ID"})
 		return
 	}
 
-	book, err := h.bookUC.GetBookByID(uint(id))
+	book, err := h.bookUC.GetBookByID(bookID)
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if book == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
 		return
 	}
@@ -60,111 +104,55 @@ func (h *BookHandler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, book)
 }
 
-// List retrieves a list of books
-func (h *BookHandler) List(c *gin.Context) {
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-
-	books, err := h.bookUC.ListBooks(limit, offset)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, books)
-}
-
-// Search searches for books
-func (h *BookHandler) Search(c *gin.Context) {
-	query := c.Query("q")
-	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter 'q' is required"})
-		return
-	}
-
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-
-	books, err := h.bookUC.SearchBooks(query, limit, offset)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, books)
-}
-
-// GetAvailable retrieves available books
-func (h *BookHandler) GetAvailable(c *gin.Context) {
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-
-	books, err := h.bookUC.GetAvailableBooks(limit, offset)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, books)
-}
-
-// Update updates a book
-func (h *BookHandler) Update(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book ID"})
-		return
-	}
-
-	book, err := h.bookUC.GetBookByID(uint(id))
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
-		return
-	}
-
-	if err := c.ShouldBindJSON(book); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.bookUC.UpdateBook(book); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, book)
-}
-
-// Delete deletes a book
 func (h *BookHandler) Delete(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	idParam := c.Param("id")
+
+	//Здесь нужно получить userID из токена
+	//Проверить его валидность и идти дальше если все хорошо
+
+	bookID, err := uuid.Parse(idParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book ID"})
 		return
 	}
 
-	ownerID, _ := strconv.ParseUint(c.Query("owner_id"), 10, 32)
-	if err := h.bookUC.DeleteBook(uint(id), uint(ownerID)); err != nil {
+	userIdRaw, ok := c.Get("userId")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+	userIDStr, ok := userIdRaw.(string)
+	if !ok || userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID in token"})
+		return
+	}
+	userUUID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID format"})
+		return
+	}
+
+	err = h.bookUC.DeleteBook(bookID, userUUID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "book deleted successfully"})
 }
-
-// GetByOwner retrieves books by owner
-func (h *BookHandler) GetByOwner(c *gin.Context) {
-	ownerID, err := strconv.ParseUint(c.Param("owner_id"), 10, 32)
+func (h *BookHandler) GetBookMovementHistory(c *gin.Context) {
+	idParam := c.Param("id")
+	bookID, err := uuid.Parse(idParam)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid owner ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book ID"})
 		return
 	}
 
-	books, err := h.bookUC.GetBooksByOwner(uint(ownerID))
+	history, err := h.bookUC.GetBookMovementHistory(bookID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, books)
+	c.JSON(http.StatusOK, history)
 }

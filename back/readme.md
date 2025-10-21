@@ -52,7 +52,7 @@ go mod download
 ## API Endpoints
 
 ### Users
-- `POST /api/v1/users/register` - Регистрация пользователя
+- `POST /api/v1/users/register` - Регистрация пользователя (путь в коде: `/registration`)
 - `POST /api/v1/users/login` - Вход пользователя
 - `GET /api/v1/users/:id` - Получить пользователя
 - `PUT /api/v1/users/:id` - Обновить пользователя

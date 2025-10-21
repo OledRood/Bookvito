@@ -1,13 +1,13 @@
 package http
 
 import (
-	"bookvito/internal/usecase"
+	"bookvito/config"
+	"bookvito/internal/domain"
 
 	"github.com/gin-gonic/gin"
 )
 
-// NewRouter initializes all routes
-func NewRouter(router *gin.Engine, userUC *usecase.UserUseCase, bookUC *usecase.BookUseCase, exchangeUC *usecase.ExchangeUseCase) {
+func NewRouter(router *gin.Engine, userUC domain.UserUseCase, bookUC domain.BookUseCase, exchangeUC domain.ExchangeUseCase, locationUC domain.LocationUseCase, cfg *config.Config) {
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
@@ -15,44 +15,57 @@ func NewRouter(router *gin.Engine, userUC *usecase.UserUseCase, bookUC *usecase.
 
 	api := router.Group("/api/v1")
 	{
-		// User routes
+
 		users := api.Group("/users")
 		{
 			userHandler := NewUserHandler(userUC)
-			users.POST("/register", userHandler.Register)
+			users.POST("/registration", userHandler.Register)
 			users.POST("/login", userHandler.Login)
-			users.GET("/:id", userHandler.GetByID)
-			users.PUT("/:id", userHandler.Update)
-			users.DELETE("/:id", userHandler.Delete)
-			users.GET("", userHandler.List)
+			users.POST("/refresh", userHandler.Refresh)
+			// 		users.GET("/:id", userHandler.GetByID)
+			// 		users.PUT("/:id", userHandler.Update)
+			// 		users.DELETE("/:id", userHandler.Delete)
+			// 		users.GET("", userHandler.List)
 		}
 
-		// Book routes
+		// --- Маршруты для книг ---
 		books := api.Group("/books")
 		{
 			bookHandler := NewBookHandler(bookUC)
-			books.POST("", bookHandler.Create)
+			// Публичные маршруты
+			books.GET("/summary", bookHandler.GetSummaryList)
+			books.GET("/list", bookHandler.GetList)
 			books.GET("/:id", bookHandler.GetByID)
-			books.GET("", bookHandler.List)
-			books.GET("/search", bookHandler.Search)
-			books.GET("/available", bookHandler.GetAvailable)
-			books.PUT("/:id", bookHandler.Update)
-			books.DELETE("/:id", bookHandler.Delete)
-			books.GET("/owner/:owner_id", bookHandler.GetByOwner)
-		}
 
-		// Exchange routes
-		exchanges := api.Group("/exchanges")
-		{
-			exchangeHandler := NewExchangeHandler(exchangeUC)
-			exchanges.POST("", exchangeHandler.Create)
-			exchanges.GET("/:id", exchangeHandler.GetByID)
-			exchanges.GET("", exchangeHandler.List)
-			exchanges.GET("/requester/:requester_id", exchangeHandler.GetByRequester)
-			exchanges.GET("/owner/:owner_id", exchangeHandler.GetByOwner)
-			exchanges.PUT("/:id/accept", exchangeHandler.Accept)
-			exchanges.PUT("/:id/reject", exchangeHandler.Reject)
-			exchanges.PUT("/:id/complete", exchangeHandler.Complete)
+			// Защищенные маршруты (требуют токен)
+			authed := books.Group("/")
+			authed.Use(AuthMiddleware(cfg.JWTSecret))
+			authed.POST("/creare", bookHandler.Create)
+			// authed.POST("/:id/reserve", bookHandler.Reserve) // TODO: Implement Reserve method in BookHandler
+			// authed.DELETE("/:id", bookHandler.Delete)
 		}
+		userHandler := NewUserHandler(userUC)
+		locationHandler := NewLocationHandler(locationUC)
+
+		// --- Маршруты для локаций ---
+		locations := api.Group("/locations")
+		{
+			locations.GET("/:id", locationHandler.GetByID)
+			locations.GET("/getAll", locationHandler.GetAll)
+
+			authed := users.Group("/")
+			authed.Use(AuthMiddleware(cfg.JWTSecret))
+			authed.GET("me", userHandler.GetByID)
+			authed.GET("me/history", userHandler.GetMyMovementHistory)
+			// authed.PUT("me", userHandler.Update)
+			// authed.DELETE("me", userHandler.Delete)
+
+		}
+		// Защищенные маршруты (требуют токен и прав администратора)
+		admin := locations.Group("/")
+		admin.Use(AuthMiddleware(cfg.JWTSecret))
+		admin.POST("/create", locationHandler.Create)
+		admin.PUT("/:id", locationHandler.Update)
+		admin.DELETE("/:id", locationHandler.Delete)
 	}
 }

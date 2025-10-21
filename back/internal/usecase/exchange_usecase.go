@@ -2,147 +2,158 @@ package usecase
 
 import (
 	"bookvito/internal/domain"
-	"errors"
+	// "errors"
+	// "time"
+	// "github.com/google/uuid"
 )
 
 type ExchangeUseCase struct {
 	exchangeRepo domain.ExchangeRepository
 	bookRepo     domain.BookRepository
 	userRepo     domain.UserRepository
+	movementRepo domain.BookMovementHistoryRepository
 }
 
 // NewExchangeUseCase creates a new exchange use case
-func NewExchangeUseCase(exchangeRepo domain.ExchangeRepository, bookRepo domain.BookRepository, userRepo domain.UserRepository) *ExchangeUseCase {
+func NewExchangeUseCase(exchangeRepo domain.ExchangeRepository, bookRepo domain.BookRepository, userRepo domain.UserRepository, movementRepo domain.BookMovementHistoryRepository) *ExchangeUseCase {
 	return &ExchangeUseCase{
 		exchangeRepo: exchangeRepo,
 		bookRepo:     bookRepo,
 		userRepo:     userRepo,
+		movementRepo: movementRepo,
 	}
 }
 
-// CreateExchangeRequest creates a new exchange request
-func (uc *ExchangeUseCase) CreateExchangeRequest(requesterID, bookID uint, message string) (*domain.Exchange, error) {
-	// Get the book
-	book, err := uc.bookRepo.GetByID(bookID)
-	if err != nil {
-		return nil, err
-	}
+// // CreateExchangeRequest creates a new book reservation/exchange request
+// func (uc *ExchangeUseCase) CreateExchangeRequest(userID, bookID uuid.UUID, locationID *uuid.UUID) (*domain.Exchange, error) {
+// 	// Get the book
+// 	book, err := uc.bookRepo.GetByID(bookID)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	// Check if the book is available
-	if !book.Available {
-		return nil, errors.New("book is not available for exchange")
-	}
+// 	// Check if the book is available
+// 	if book.Status != domain.BookAvailable {
+// 		return nil, errors.New("book is not available for exchange")
+// 	}
 
-	// Check if requester is not the owner
-	if book.OwnerID == requesterID {
-		return nil, errors.New("you cannot request your own book")
-	}
+// 	exchange := &domain.Exchange{
+// 		UserID:     userID,
+// 		BookID:     bookID,
+// 		Status:     domain.ExchangeRequested,
+// 		LocationID: locationID,
+// 	}
 
-	exchange := &domain.Exchange{
-		RequesterID: requesterID,
-		OwnerID:     book.OwnerID,
-		BookID:      bookID,
-		Status:      "pending",
-		Message:     message,
-	}
+// 	if err := uc.exchangeRepo.Create(exchange); err != nil {
+// 		return nil, err
+// 	}
 
-	if err := uc.exchangeRepo.Create(exchange); err != nil {
-		return nil, err
-	}
+// 	return exchange, nil
+// }
 
-	return exchange, nil
-}
+// // GetExchangeByID retrieves an exchange by ID
+// func (uc *ExchangeUseCase) GetExchangeByID(id uuid.UUID) (*domain.Exchange, error) {
+// 	return uc.exchangeRepo.GetByID(id)
+// }
 
-// GetExchangeByID retrieves an exchange by ID
-func (uc *ExchangeUseCase) GetExchangeByID(id uint) (*domain.Exchange, error) {
-	return uc.exchangeRepo.GetByID(id)
-}
+// // GetExchangesByUser retrieves all exchanges for a user
+// func (uc *ExchangeUseCase) GetExchangesByUser(userID uuid.UUID) ([]*domain.Exchange, error) {
+// 	return uc.exchangeRepo.GetByUserID(userID)
+// }
 
-// GetExchangesByRequester retrieves all exchanges requested by a user
-func (uc *ExchangeUseCase) GetExchangesByRequester(requesterID uint) ([]*domain.Exchange, error) {
-	return uc.exchangeRepo.GetByRequesterID(requesterID)
-}
+// // GetExchangesByBook retrieves all exchanges for a book
+// func (uc *ExchangeUseCase) GetExchangesByBook(bookID uuid.UUID) ([]*domain.Exchange, error) {
+// 	return uc.exchangeRepo.GetByBookID(bookID)
+// }
 
-// GetExchangesByOwner retrieves all exchanges for books owned by a user
-func (uc *ExchangeUseCase) GetExchangesByOwner(ownerID uint) ([]*domain.Exchange, error) {
-	return uc.exchangeRepo.GetByOwnerID(ownerID)
-}
+// // ApproveExchange approves an exchange request
+// func (uc *ExchangeUseCase) ApproveExchange(exchangeID uuid.UUID, dueDate *time.Time) error {
+// 	exchange, err := uc.exchangeRepo.GetByID(exchangeID)
+// 	if err != nil {
+// 		return err
+// 	}
 
-// AcceptExchange accepts an exchange request
-func (uc *ExchangeUseCase) AcceptExchange(exchangeID, ownerID uint) error {
-	exchange, err := uc.exchangeRepo.GetByID(exchangeID)
-	if err != nil {
-		return err
-	}
+// 	// Check if exchange is requested
+// 	if exchange.Status != domain.ExchangeRequested {
+// 		return errors.New("exchange is not in requested status")
+// 	}
 
-	// Check if the user is the owner
-	if exchange.OwnerID != ownerID {
-		return errors.New("unauthorized: only the owner can accept this exchange")
-	}
+// 	exchange.Status = domain.ExchangeApproved
+// 	exchange.DueDate = dueDate
+// 	if err := uc.exchangeRepo.Update(exchange); err != nil {
+// 		return err
+// 	}
 
-	// Check if exchange is pending
-	if exchange.Status != "pending" {
-		return errors.New("exchange is not in pending status")
-	}
+// 	// Mark the book as borrowed
+// 	book, err := uc.bookRepo.GetByID(exchange.BookID)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	exchange.Status = "accepted"
-	if err := uc.exchangeRepo.Update(exchange); err != nil {
-		return err
-	}
+// 	book.Status = domain.BookBorrowed
+// 	return uc.bookRepo.Update(book)
+// }
 
-	// Mark the book as unavailable
-	book, err := uc.bookRepo.GetByID(exchange.BookID)
-	if err != nil {
-		return err
-	}
+// // BorrowBook marks an exchange as borrowed (book was picked up)
+// func (uc *ExchangeUseCase) BorrowBook(exchangeID uuid.UUID) error {
+// 	exchange, err := uc.exchangeRepo.GetByID(exchangeID)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	book.Available = false
-	return uc.bookRepo.Update(book)
-}
+// 	// Check if exchange is approved
+// 	if exchange.Status != domain.ExchangeApproved {
+// 		return errors.New("exchange must be approved before it can be borrowed")
+// 	}
 
-// RejectExchange rejects an exchange request
-func (uc *ExchangeUseCase) RejectExchange(exchangeID, ownerID uint) error {
-	exchange, err := uc.exchangeRepo.GetByID(exchangeID)
-	if err != nil {
-		return err
-	}
+// 	exchange.Status = domain.ExchangeBorrowed
+// 	return uc.exchangeRepo.Update(exchange)
+// }
 
-	// Check if the user is the owner
-	if exchange.OwnerID != ownerID {
-		return errors.New("unauthorized: only the owner can reject this exchange")
-	}
+// // ReturnBook marks a book as returned
+// func (uc *ExchangeUseCase) ReturnBook(exchangeID uuid.UUID) error {
+// 	exchange, err := uc.exchangeRepo.GetByID(exchangeID)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	// Check if exchange is pending
-	if exchange.Status != "pending" {
-		return errors.New("exchange is not in pending status")
-	}
+// 	// Check if exchange is borrowed
+// 	if exchange.Status != domain.ExchangeBorrowed {
+// 		return errors.New("exchange must be borrowed before it can be returned")
+// 	}
 
-	exchange.Status = "rejected"
-	return uc.exchangeRepo.Update(exchange)
-}
+// 	exchange.Status = domain.ExchangeReturned
+// 	if err := uc.exchangeRepo.Update(exchange); err != nil {
+// 		return err
+// 	}
 
-// CompleteExchange marks an exchange as completed
-func (uc *ExchangeUseCase) CompleteExchange(exchangeID, ownerID uint) error {
-	exchange, err := uc.exchangeRepo.GetByID(exchangeID)
-	if err != nil {
-		return err
-	}
+// 	// Mark the book as available again
+// 	book, err := uc.bookRepo.GetByID(exchange.BookID)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	// Check if the user is the owner
-	if exchange.OwnerID != ownerID {
-		return errors.New("unauthorized: only the owner can complete this exchange")
-	}
+// 	book.Status = domain.BookAvailable
+// 	return uc.bookRepo.Update(book)
+// }
 
-	// Check if exchange is accepted
-	if exchange.Status != "accepted" {
-		return errors.New("exchange must be accepted before it can be completed")
-	}
+// // CancelExchange cancels an exchange request
+// func (uc *ExchangeUseCase) CancelExchange(exchangeID uuid.UUID) error {
+// 	exchange, err := uc.exchangeRepo.GetByID(exchangeID)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	exchange.Status = "completed"
-	return uc.exchangeRepo.Update(exchange)
-}
+// 	// Only allow cancellation if not yet borrowed
+// 	if exchange.Status == domain.ExchangeBorrowed || exchange.Status == domain.ExchangeReturned {
+// 		return errors.New("cannot cancel exchange in current status")
+// 	}
 
-// ListExchanges retrieves a list of exchanges
-func (uc *ExchangeUseCase) ListExchanges(limit, offset int) ([]*domain.Exchange, error) {
-	return uc.exchangeRepo.List(limit, offset)
-}
+// 	exchange.Status = domain.ExchangeCancelled
+// 	return uc.exchangeRepo.Update(exchange)
+// }
+
+// // ListExchanges retrieves a list of exchanges
+// func (uc *ExchangeUseCase) ListExchanges(limit, offset int) ([]*domain.Exchange, error) {
+// 	return uc.exchangeRepo.List(limit, offset)
+// }
