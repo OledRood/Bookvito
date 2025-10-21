@@ -30,6 +30,7 @@ type UserRole string
 const (
 	RoleUser  UserRole = "user"
 	RoleModer UserRole = "moder"
+	RoleAdmin UserRole = "admin"
 )
 
 type ExchangeStatus string

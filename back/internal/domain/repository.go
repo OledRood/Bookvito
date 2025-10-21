@@ -35,6 +35,7 @@ type ExchangeRepository interface {
 	Update(exchange *Exchange) error
 	Delete(id uuid.UUID) error
 	List(limit, offset int) ([]*Exchange, error)
+	GetExpired() ([]*Exchange, error)
 }
 
 // LocationRepository defines methods for location data access

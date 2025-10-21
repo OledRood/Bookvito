@@ -13,13 +13,25 @@ type UserHandler struct {
 }
 
 func (h *UserHandler) GetByID(c *gin.Context) {
-	userID, ok := c.Get("userId")
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId not found in context"})
+
+	println("GetByID called")
+	userIdRaw, exists := c.Get("userId")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
 		return
 	}
-	user, err := h.userUC.GetUserByID(userID.(string))
+
+	userIDStr, ok := userIdRaw.(string)
+	if !ok || userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID in token"})
+		return
+	}
+	user, err := h.userUC.GetUserByID(userIDStr)
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if user == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
@@ -107,107 +119,3 @@ func (h *UserHandler) GetMyMovementHistory(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, history)
 }
-
-// // GetByID retrieves a user by ID
-
-// func (h *UserHandler) GetByID(c *gin.Context) {
-// 	userID, ok := c.Get("userId")
-// 	if !ok {
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId not found in context"})
-// 		return
-// 	}
-// 	user, err := h.userUC.GetUserByID(userID.(string))
-// 	if err != nil {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-// 		return
-// 	}
-// 	c.JSON(http.StatusOK, user)
-// }
-
-// Update updates a user
-//
-//	func (h *UserHandler) Update(c *gin.Context) {
-//		userID, ok := c.Get("userId")
-// func (h *UserHandler) Update(c *gin.Context) {
-// 	userID, ok := c.Get("userId")
-// 	if !ok {
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId not found in context"})
-// 		return
-// 	}
-// 	user, err := h.userUC.GetUserByID(userID.(string))
-// 	if err != nil {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-// 		return
-// 	}
-// 	if err := c.ShouldBindJSON(user); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 		return
-// 	}
-// 	if err := h.userUC.UpdateUser(user); err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
-// 	c.JSON(http.StatusOK, user)
-// }
-
-// 	if !ok {
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId not found in context"})
-// 		return
-// 	}
-// 	user, err := h.userUC.GetUserByID(userID.(string))
-// 	if err != nil {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-// 		return
-// 	}
-// 	if err := c.ShouldBindJSON(user); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 		return
-// 	}
-// 	if err := h.userUC.UpdateUser(user); err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
-// 	c.JSON(http.StatusOK, user)
-// }
-
-// // Delete deletes a user
-//
-//	func (h *UserHandler) Delete(c *gin.Context) {
-//		userID, ok := c.Get("userId")
-// func (h *UserHandler) Delete(c *gin.Context) {
-// 	userID, ok := c.Get("userId")
-// 	if !ok {
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId not found in context"})
-// 		return
-// 	}
-// 	if err := h.userUC.DeleteUser(userID.(string)); err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
-// 	c.JSON(http.StatusOK, gin.H{"message": "user deleted successfully"})
-// }
-
-// 	if !ok {
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId not found in context"})
-// 		return
-// 	}
-// 	if err := h.userUC.DeleteUser(userID.(string)); err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
-// 	c.JSON(http.StatusOK, gin.H{"message": "user deleted successfully"})
-// }
-
-// // List retrieves a list of users
-// func (h *UserHandler) List(c *gin.Context) {
-// 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-// 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-
-// 	users, err := h.userUC.ListUsers(limit, offset)
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
-
-// 	c.JSON(http.StatusOK, users)
-// }

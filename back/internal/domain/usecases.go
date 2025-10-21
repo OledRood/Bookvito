@@ -19,11 +19,11 @@ type BookUseCase interface {
 	CreateBook(book *Book) error
 	GetSummaryBooksList() ([]*BookSummary, error)
 	GetBooksList() ([]*Book, error)
-	GetBookByID(id uuid.UUID) (*Book, error)
+	GetBookByID(bookID uuid.UUID) (*Book, error)
 	DeleteBook(bookID uuid.UUID, userID uuid.UUID) error
 	Request(bookID uuid.UUID, userID uuid.UUID) error
 	Borrow(bookID uuid.UUID, userID uuid.UUID) error
-	Return(bookID uuid.UUID, userID uuid.UUID) error
+	Return(updatedBook *Book, userID uuid.UUID) error
 
 	// GetBookByID(id uuid.UUID) (*Book, error)
 	// UpdateBook(book *Book) error

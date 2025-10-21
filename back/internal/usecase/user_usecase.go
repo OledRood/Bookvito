@@ -8,6 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 	// "golang.org/x/crypto/bcrypt"
 )
 
@@ -27,9 +28,13 @@ func NewUserUseCase(userRepo domain.UserRepository, movementRepo domain.BookMove
 }
 
 func (uc *UserUseCase) RegisterUser(email string, password string, name string) (*domain.TokenResponse, error) {
-	existingUser, _ := uc.userRepo.GetByEmail(email)
-	if existingUser != nil {
+	_, err := uc.userRepo.GetByEmail(email)
+	if err == nil {
 		return nil, errors.New("user with this email already exists")
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		// Если ошибка - это не "запись не найдена", значит, произошла другая проблема с БД
+		return nil, err
 	}
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -41,7 +46,7 @@ func (uc *UserUseCase) RegisterUser(email string, password string, name string) 
 		Password: string(hashedPassword),
 		Name:     name,
 	}
-	err = uc.userRepo.Create(user)
+	err = uc.userRepo.Create(user) // Здесь err переопределяется
 	if err != nil {
 		return nil, err
 	}

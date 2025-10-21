@@ -22,17 +22,19 @@ func NewRouter(router *gin.Engine, userUC domain.UserUseCase, bookUC domain.Book
 			users.POST("/registration", userHandler.Register)
 			users.POST("/login", userHandler.Login)
 			users.POST("/refresh", userHandler.Refresh)
-			// 		users.GET("/:id", userHandler.GetByID)
-			// 		users.PUT("/:id", userHandler.Update)
-			// 		users.DELETE("/:id", userHandler.Delete)
-			// 		users.GET("", userHandler.List)
+			// TODO: изменение пароля
+
+			authed := users.Group("/")
+			authed.Use(AuthMiddleware(cfg.JWTSecret))
+			authed.GET("/me", userHandler.GetByID)
+			// TODO: получить все брони, историю обменов и т.д.
+
 		}
 
-		// --- Маршруты для книг ---
 		books := api.Group("/books")
 		{
 			bookHandler := NewBookHandler(bookUC)
-			// Публичные маршруты
+
 			books.GET("/summary", bookHandler.GetSummaryList)
 			books.GET("/list", bookHandler.GetList)
 			books.GET("/:id", bookHandler.GetByID)
@@ -40,32 +42,18 @@ func NewRouter(router *gin.Engine, userUC domain.UserUseCase, bookUC domain.Book
 			// Защищенные маршруты (требуют токен)
 			authed := books.Group("/")
 			authed.Use(AuthMiddleware(cfg.JWTSecret))
-			authed.POST("/creare", bookHandler.Create)
-			// authed.POST("/:id/reserve", bookHandler.Reserve) // TODO: Implement Reserve method in BookHandler
-			// authed.DELETE("/:id", bookHandler.Delete)
+			authed.POST("/create", bookHandler.Create)
+			authed.POST("/request", bookHandler.Request)
+			authed.PUT("/borrow", bookHandler.Borrow)
+			authed.PUT("/return", bookHandler.Return)
+			authed.DELETE("/delete", bookHandler.Delete)
 		}
-		userHandler := NewUserHandler(userUC)
-		locationHandler := NewLocationHandler(locationUC)
-
-		// --- Маршруты для локаций ---
 		locations := api.Group("/locations")
 		{
+			locationHandler := NewLocationHandler(locationUC)
 			locations.GET("/:id", locationHandler.GetByID)
 			locations.GET("/getAll", locationHandler.GetAll)
 
-			authed := users.Group("/")
-			authed.Use(AuthMiddleware(cfg.JWTSecret))
-			authed.GET("me", userHandler.GetByID)
-			authed.GET("me/history", userHandler.GetMyMovementHistory)
-			// authed.PUT("me", userHandler.Update)
-			// authed.DELETE("me", userHandler.Delete)
-
 		}
-		// Защищенные маршруты (требуют токен и прав администратора)
-		admin := locations.Group("/")
-		admin.Use(AuthMiddleware(cfg.JWTSecret))
-		admin.POST("/create", locationHandler.Create)
-		admin.PUT("/:id", locationHandler.Update)
-		admin.DELETE("/:id", locationHandler.Delete)
 	}
 }

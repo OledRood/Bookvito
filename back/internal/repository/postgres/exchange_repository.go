@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"bookvito/internal/domain"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -60,5 +61,11 @@ func (r *exchangeRepository) Delete(id uuid.UUID) error {
 func (r *exchangeRepository) List(limit, offset int) ([]*domain.Exchange, error) {
 	var exchanges []*domain.Exchange
 	err := r.db.Preload("User").Preload("Book").Preload("Location").Limit(limit).Offset(offset).Find(&exchanges).Error
+	return exchanges, err
+}
+
+func (r *exchangeRepository) GetExpired() ([]*domain.Exchange, error) {
+	var exchanges []*domain.Exchange
+	err := r.db.Where("status = ? AND expires_at < ?", domain.ExchangeRequested, time.Now()).Find(&exchanges).Error
 	return exchanges, err
 }
