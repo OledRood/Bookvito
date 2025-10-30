@@ -17,13 +17,13 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 	println("GetByID called")
 	userIdRaw, exists := c.Get("userId")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не аутентифицирован"})
 		return
 	}
 
 	userIDStr, ok := userIdRaw.(string)
 	if !ok || userIDStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID in token"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный идентификатор пользователя в токене"})
 		return
 	}
 	user, err := h.userUC.GetUserByID(userIDStr)
@@ -32,7 +32,7 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 		return
 	}
 	if user == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Пользователь не найден"})
 		return
 	}
 	c.JSON(http.StatusOK, user)
@@ -46,7 +46,7 @@ func NewUserHandler(userUC domain.UserUseCase) *UserHandler {
 type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=6"`
-	Name     string `json:"name" binding:"required,min=5,max=50"`
+	Name     string `json:"name" binding:"required,min=2,max=50"`
 }
 
 func (h *UserHandler) Register(c *gin.Context) {
@@ -107,7 +107,7 @@ func (h *UserHandler) Refresh(c *gin.Context) {
 func (h *UserHandler) GetMyMovementHistory(c *gin.Context) {
 	userID, ok := c.Get("userId")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId not found in context"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Идентификатор пользователя не найден в контексте"})
 		return
 	}
 
@@ -118,4 +118,74 @@ func (h *UserHandler) GetMyMovementHistory(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, history)
+}
+
+type UpdateUserRequest struct {
+	Avatar *string `json:"avatar"`
+	Name   *string `json:"name"`
+}
+
+// UpdateMe updates fields of the currently authenticated user (partial update supported)
+func (h *UserHandler) UpdateMe(c *gin.Context) {
+	userIdRaw, exists := c.Get("userId")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не аутентифицирован"})
+		return
+	}
+
+	userIDStr, ok := userIdRaw.(string)
+	if !ok || userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный идентификатор пользователя в токене"})
+		return
+	}
+
+	var req UpdateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.userUC.GetUserByID(userIDStr)
+	if err != nil || user == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось загрузить пользователя"})
+		return
+	}
+
+	// Only update allowed fields (avatar for now)
+	// Update allowed fields
+	if req.Avatar != nil {
+		user.Avatar = *req.Avatar
+	}
+	if req.Name != nil {
+		user.Name = *req.Name
+	}
+
+	if err := h.userUC.UpdateUser(user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
+// DeleteMe deletes the currently authenticated user
+func (h *UserHandler) DeleteMe(c *gin.Context) {
+	userIdRaw, exists := c.Get("userId")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не аутентифицирован"})
+		return
+	}
+
+	userIDStr, ok := userIdRaw.(string)
+	if !ok || userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный идентификатор пользователя в токене"})
+		return
+	}
+
+	if err := h.userUC.DeleteUser(userIDStr); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }

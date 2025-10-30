@@ -65,3 +65,54 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// OptionalAuthMiddleware attempts to parse Authorization header and set userId/role
+// if a valid token is provided. Unlike AuthMiddleware it does NOT abort the request
+// when the header is missing or invalid — it simply proceeds without setting auth
+// context values. This is useful for public endpoints that should behave slightly
+// differently for authenticated callers (e.g., summary list).
+func OptionalAuthMiddleware(secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			// no auth provided -> continue as anonymous
+			c.Next()
+			return
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			// invalid format -> ignore and continue as anonymous
+			c.Next()
+			return
+		}
+
+		tokenStr := parts[1]
+		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, jwt.ErrSignatureInvalid
+			}
+			return []byte(secret), nil
+		})
+		if err != nil || !token.Valid {
+			// invalid token -> ignore and continue
+			c.Next()
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.Next()
+			return
+		}
+
+		if userID, ok := claims["userId"].(string); ok && userID != "" {
+			c.Set("userId", userID)
+		}
+		if role, ok := claims["role"].(string); ok {
+			c.Set("role", role)
+		}
+
+		c.Next()
+	}
+}

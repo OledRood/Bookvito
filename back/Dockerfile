@@ -22,7 +22,10 @@ RUN go mod tidy
 # Собираем бинарный файл приложения
 # CGO_ENABLED=0 отключает Cgo, что делает бинарник статически скомпонованным
 # Флаги -w -s уменьшают размер бинарного файла
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags="-w -s" -o /app/main ./cmd/api
+# NOTE: убрали флаг -a (forces rebuild of all packages) — это значительно
+# сокращает время сборки при наличии кэша модулей. Оставляем -v для вывода
+# пакетов в логах сборки.
+RUN CGO_ENABLED=0 GOOS=linux go build -v -ldflags="-w -s" -o /app/main ./cmd/api
 
 # Этап 2: Финальный образ (Final)
 # Используем минимальный образ alpine для уменьшения размера финального образа
