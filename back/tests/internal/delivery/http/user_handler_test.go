@@ -23,37 +23,56 @@ func TestUser_Register_Login_Refresh_And_Me_CRUD(t *testing.T) {
 
 	// 1) Register valid
 	reg := creds{Email: "user@example.com", Password: "Str0ngPass!"}
-	b, _ := json.Marshal(reg)
+	b, err := json.Marshal(reg)
+	if err != nil {
+		t.Fatalf("failed to marshal register request: %v", err)
+	}
+
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/user/register", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	rw := httptest.NewRecorder()
 	r.ServeHTTP(rw, req)
+
 	if rw.Code != http.StatusCreated && rw.Code != http.StatusOK {
 		t.Fatalf("register expected 201/200, got %d, body=%s", rw.Code, rw.Body.String())
 	}
 
 	// 2) Register invalid (weak password)
 	regWeak := creds{Email: "weak@example.com", Password: "123"}
-	b, _ = json.Marshal(regWeak)
+	b, err = json.Marshal(regWeak)
+	if err != nil {
+		t.Fatalf("failed to marshal weak password request: %v", err)
+	}
+
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/user/register", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	rw = httptest.NewRecorder()
 	r.ServeHTTP(rw, req)
+
 	if rw.Code == http.StatusOK || rw.Code == http.StatusCreated {
 		t.Fatalf("expected validation error on weak password, got %d", rw.Code)
 	}
 
 	// 3) Login valid
-	b, _ = json.Marshal(reg)
+	b, err = json.Marshal(reg)
+	if err != nil {
+		t.Fatalf("failed to marshal login request: %v", err)
+	}
+
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/user/login", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	rw = httptest.NewRecorder()
 	r.ServeHTTP(rw, req)
+
 	if rw.Code != http.StatusOK {
 		t.Fatalf("login expected 200, got %d, body=%s", rw.Code, rw.Body.String())
 	}
+
 	var loginResp map[string]any
-	_ = json.Unmarshal(rw.Body.Bytes(), &loginResp)
+	if err := json.Unmarshal(rw.Body.Bytes(), &loginResp); err != nil {
+		t.Fatalf("failed to unmarshal login response: %v", err)
+	}
+
 	access, _ := loginResp["access_token"].(string)
 	refresh, _ := loginResp["refresh_token"].(string)
 	if access == "" || refresh == "" {
@@ -65,28 +84,39 @@ func TestUser_Register_Login_Refresh_And_Me_CRUD(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+access)
 	rw = httptest.NewRecorder()
 	r.ServeHTTP(rw, req)
+
 	if rw.Code != http.StatusOK {
 		t.Fatalf("me GET expected 200, got %d", rw.Code)
 	}
 
 	// 5) Me PUT update
 	update := map[string]any{"name": "Updated User"}
-	b, _ = json.Marshal(update)
+	b, err = json.Marshal(update)
+	if err != nil {
+		t.Fatalf("failed to marshal update request: %v", err)
+	}
+
 	req = httptest.NewRequest(http.MethodPut, "/api/v1/user/me", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access)
 	rw = httptest.NewRecorder()
 	r.ServeHTTP(rw, req)
+
 	if rw.Code != http.StatusOK {
 		t.Fatalf("me PUT expected 200, got %d", rw.Code)
 	}
 
 	// 6) Refresh token
-	b, _ = json.Marshal(refreshReq{RefreshToken: refresh})
+	b, err = json.Marshal(refreshReq{RefreshToken: refresh})
+	if err != nil {
+		t.Fatalf("failed to marshal refresh request: %v", err)
+	}
+
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/user/refresh", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	rw = httptest.NewRecorder()
 	r.ServeHTTP(rw, req)
+
 	if rw.Code != http.StatusOK {
 		t.Fatalf("refresh expected 200, got %d", rw.Code)
 	}
@@ -96,6 +126,7 @@ func TestUser_Register_Login_Refresh_And_Me_CRUD(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+access)
 	rw = httptest.NewRecorder()
 	r.ServeHTTP(rw, req)
+
 	if rw.Code != http.StatusOK && rw.Code != http.StatusNoContent {
 		t.Fatalf("me DELETE expected 200/204, got %d", rw.Code)
 	}
