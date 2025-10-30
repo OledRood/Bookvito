@@ -7,9 +7,12 @@ import (
 	"bookvito/internal/usecase"
 	"bookvito/pkg/database"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/gin-contrib/cors"
 )
 
 func main() {
@@ -45,6 +48,23 @@ func main() {
 
 	// Initialize HTTP handlers
 	router := gin.Default()
+
+	// CORS: allow dev frontend origin and required methods/headers so browser preflight (OPTIONS) succeeds
+	// Allow browser dev servers on localhost (any port) and 127.0.0.1
+	router.Use(cors.New(cors.Config{
+		AllowOriginFunc: func(origin string) bool {
+			return strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1")
+		},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+
+	// Serve uploaded images from disk at /images
+	router.Static("/images", "./data/images")
+
 	http.NewRouter(router, userUseCase, bookUseCase, exchangeUseCase, locationUseCase, cfg)
 
 	// Запускаем фоновую задачу для отмены просроченных бронирований

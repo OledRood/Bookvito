@@ -53,13 +53,30 @@ func (r *bookRepository) List(limit, offset int) ([]*domain.Book, error) {
 	return books, err
 }
 
-func (r *bookRepository) GetSummaryList(limit, offset int) ([]*domain.BookSummary, error) {
+func (r *bookRepository) GetSummaryList(limit, offset int, excludeUserID *uuid.UUID) ([]*domain.BookSummary, error) {
 	var summaries []*domain.BookSummary
-	err := r.db.Model(&domain.Book{}). // Указываем модель, но выбираем только нужные поля
-						Select("id, image_url, title, author"). // Выбираем только нужные поля
-						Limit(limit).
-						Offset(offset).
-						Find(&summaries).Error
+
+	query := r.db.Model(&domain.Book{}).
+		Select("id, image_url, title, author").
+		Where("status = ?", domain.BookAvailable)
+
+	if excludeUserID != nil {
+		// exclude books owned by the user
+		query = query.Where("owner_id != ?", *excludeUserID)
+
+		// exclude books that the user has returned (i.e. had exchanges with status 'returned')
+		// We only want to hide books that the user has already read/returned; other interactions
+		// (requested/borrowed) do not affect the public summary because only available books
+		// are selected above.
+		sub := r.db.Model(&domain.Exchange{}).
+			Select("book_id").
+			Where("user_id = ? AND status = ?", *excludeUserID, domain.ExchangeReturned)
+		query = query.Where("id NOT IN (?)", sub)
+	}
+
+	err := query.Limit(limit).
+		Offset(offset).
+		Find(&summaries).Error
 	return summaries, err
 }
 
@@ -67,7 +84,7 @@ func (r *bookRepository) Search(query string, limit, offset int) ([]*domain.Book
 	var books []*domain.Book
 	searchPattern := "%" + query + "%"
 	err := r.db.Preload("CurrentLocation").
-		Where("title ILIKE ? OR author ILIKE ? OR description ILIKE ?", searchPattern, searchPattern, searchPattern).
+		Where("title ILIKE ? OR author ILIKE ?", searchPattern, searchPattern).
 		Limit(limit).
 		Offset(offset).
 		Find(&books).Error
@@ -88,6 +105,14 @@ func (r *bookRepository) GetByLocationID(locationID uuid.UUID) ([]*domain.Book, 
 	var books []*domain.Book
 	err := r.db.Preload("CurrentLocation").
 		Where("current_location_id = ?", locationID).
+		Find(&books).Error
+	return books, err
+}
+
+func (r *bookRepository) GetByOwner(ownerID uuid.UUID) ([]*domain.Book, error) {
+	var books []*domain.Book
+	err := r.db.Preload("CurrentLocation").
+		Where("owner_id = ?", ownerID).
 		Find(&books).Error
 	return books, err
 }

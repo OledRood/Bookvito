@@ -143,9 +143,13 @@ func (h *LocationHandler) Delete(c *gin.Context) {
 }
 
 func checkAdminRole(c *gin.Context) bool {
-	userRole, exists := c.Get("role")
-	if !exists {
+	v, ok := c.Get("role")
+	if !ok {
 		return false
 	}
-	return userRole == "admin"
+	s, ok := v.(string)
+	if !ok {
+		return false
+	}
+	return s == "admin"
 }

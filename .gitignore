@@ -1,0 +1,49 @@
+# Repository-level .gitignore for Bookvito
+
+# macOS
+.DS_Store
+
+# Editors/IDEs
+.vscode/
+.idea/
+*.suo
+*.swp
+*~
+
+# Environment / secrets
+.env
+.env.*
+/.env.local
+
+# Logs
+logs/
+*.log
+
+# Node / frontend
+# ignore node_modules and common build output anywhere in repo
+**/node_modules/
+**/dist/
+**/build/
+**/.vite/
+**/.parcel-cache/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Vite cache / temporary
+.vite/
+.cache/
+
+# Go build artifacts and executables (backend)
+/back/api
+/back/tmp
+*.exe
+*.out
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Misc
+.DS_Store
+.history

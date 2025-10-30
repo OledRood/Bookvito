@@ -10,11 +10,16 @@ import (
 type BookStatus string
 
 const (
+	// Это книга доступна для бронирования
 	BookAvailable BookStatus = "available"
+	// Это мы бронируем
 	BookRequested BookStatus = "requested"
-	BookBorrowed  BookStatus = "borrowed"
-	BookArchived  BookStatus = "archived"
-	BookDeleted   BookStatus = "deleted"
+	// Это мы взяли книгу
+	BookBorrowed BookStatus = "borrowed"
+	// Это книга заархивирована
+	BookArchived BookStatus = "archived"
+	// Это книга удалена
+	BookDeleted BookStatus = "deleted"
 )
 
 type BookCondition string
@@ -54,11 +59,12 @@ type Location struct {
 // User represents a user in the system (Пользователь)
 type User struct {
 	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Email     string     `gorm:"unique;not null" json:"email"`                // Почта
-	Password  string     `gorm:"not null" json:"-"`                           // Пароль (хранится в виде хэша)
-	Name      string     `gorm:"not null" json:"name"`                        // Имя
-	Role      UserRole   `gorm:"type:varchar(20);default:'user'" json:"role"` // Роль
-	CreatedAt time.Time  `gorm:"autoCreateTime" json:"created_at"`            // Дата создания
+	Email     string     `gorm:"unique;not null" json:"email"`                            // Почта
+	Password  string     `gorm:"not null" json:"-"`                                       // Пароль (хранится в виде хэша)
+	Name      string     `gorm:"not null" json:"name"`                                    // Имя
+	Avatar    string     `gorm:"type:text;default:'avatar1.png'" json:"avatar,omitempty"` // Avatar filename or URL
+	Role      UserRole   `gorm:"type:varchar(20);default:'user'" json:"role"`             // Роль
+	CreatedAt time.Time  `gorm:"autoCreateTime" json:"created_at"`                        // Дата создания
 	Exchanges []Exchange `gorm:"foreignKey:UserID" json:"exchanges,omitempty"`
 	Reviews   []Review   `gorm:"foreignKey:UserID" json:"reviews,omitempty"`
 

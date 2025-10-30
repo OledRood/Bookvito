@@ -1,3 +1,14 @@
+# Ignore build artifacts and temporary files in back/
+
+# Go build outputs and binaries
+/api
+/tmp
+*.exe
+*.out
+
+# Logs and local config
+*.log
+.env
 # Binaries
 *.exe
 *.exe~

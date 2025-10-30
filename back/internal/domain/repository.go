@@ -20,10 +20,15 @@ type BookRepository interface {
 	Update(book *Book) error
 	Delete(bookID uuid.UUID) error
 	List(limit, offset int) ([]*Book, error)
-	GetSummaryList(limit, offset int) ([]*BookSummary, error)
+	// GetSummaryList returns a list of book summaries for public listing.
+	// If excludeUserID is non-nil, books owned by that user or books
+	// that the user has exchanges with will be excluded.
+	GetSummaryList(limit, offset int, excludeUserID *uuid.UUID) ([]*BookSummary, error)
 	Search(query string, limit, offset int) ([]*Book, error)
 	GetByStatus(status BookStatus, limit, offset int) ([]*Book, error)
 	GetByLocationID(locationID uuid.UUID) ([]*Book, error)
+	// GetByOwner returns books owned by a specific user
+	GetByOwner(ownerID uuid.UUID) ([]*Book, error)
 }
 
 // ExchangeRepository defines methods for exchange data access

@@ -28,12 +28,15 @@ func NewUserUseCase(userRepo domain.UserRepository, movementRepo domain.BookMove
 }
 
 func (uc *UserUseCase) RegisterUser(email string, password string, name string) (*domain.TokenResponse, error) {
-	_, err := uc.userRepo.GetByEmail(email)
-	if err == nil {
-		return nil, errors.New("user with this email already exists")
+	// Try to fetch existing user by email. Some repository implementations
+	// might return (nil, nil) or unexpected values, so check both the
+	// returned error and the returned user pointer to be robust.
+	existingUser, err := uc.userRepo.GetByEmail(email)
+	if err == nil && existingUser != nil {
+		return nil, errors.New("Пользователь с таким email уже существует")
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		// Если ошибка - это не "запись не найдена", значит, произошла другая проблема с БД
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		// If the error is not "record not found", propagate DB error
 		return nil, err
 	}
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -45,6 +48,10 @@ func (uc *UserUseCase) RegisterUser(email string, password string, name string) 
 		Email:    email,
 		Password: string(hashedPassword),
 		Name:     name,
+	}
+	// Ensure default avatar is set when creating a new user
+	if user.Avatar == "" {
+		user.Avatar = "avatar1.png"
 	}
 	err = uc.userRepo.Create(user) // Здесь err переопределяется
 	if err != nil {
@@ -91,10 +98,10 @@ func (uc *UserUseCase) generateTokenPair(user *domain.User) (*domain.TokenRespon
 func (uc *UserUseCase) LoginUser(email, password string) (*domain.TokenResponse, error) {
 	user, err := uc.userRepo.GetByEmail(email)
 	if err != nil {
-		return nil, errors.New("invalid email or password")
+		return nil, errors.New("Неверный email или пароль")
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		return nil, errors.New("invalid email or password")
+		return nil, errors.New("Неверный email или пароль")
 	}
 	return uc.generateTokenPair(user)
 }
@@ -102,11 +109,11 @@ func (uc *UserUseCase) LoginUser(email, password string) (*domain.TokenResponse,
 func (uc *UserUseCase) RefreshToken(refreshToken string) (*domain.TokenResponse, error) {
 	user, err := uc.userRepo.GetByRefreshToken(refreshToken)
 	if err != nil {
-		return nil, errors.New("invalid refresh token")
+		return nil, errors.New("Неверный токен обновления")
 	}
 
 	if time.Now().After(user.RefreshTokenExpiresAt) {
-		return nil, errors.New("refresh token expired")
+		return nil, errors.New("Токен обновления истёк")
 	}
 
 	// Generate new pair of tokens
@@ -141,15 +148,20 @@ func (uc *UserUseCase) RefreshToken(refreshToken string) (*domain.TokenResponse,
 func (uc *UserUseCase) GetUserByID(id string) (*domain.User, error) {
 	uuidID, err := uuid.Parse(id)
 	if err != nil {
-		return nil, errors.New("invalid user ID format")
+		return nil, errors.New("Неверный формат идентификатора пользователя")
 	}
 	return uc.userRepo.GetByID(uuidID)
+}
+
+// UpdateUser updates user information in the repository
+func (uc *UserUseCase) UpdateUser(user *domain.User) error {
+	return uc.userRepo.Update(user)
 }
 
 func (uc *UserUseCase) DeleteUser(id string) error {
 	uuidID, err := uuid.Parse(id)
 	if err != nil {
-		return errors.New("invalid user ID format")
+		return errors.New("Неверный формат идентификатора пользователя")
 	}
 	return uc.userRepo.Delete(uuidID)
 }
@@ -157,7 +169,7 @@ func (uc *UserUseCase) DeleteUser(id string) error {
 func (uc *UserUseCase) GetUserMovementHistory(userID string) ([]*domain.BookMovementHistory, error) {
 	uuidID, err := uuid.Parse(userID)
 	if err != nil {
-		return nil, errors.New("invalid user ID format")
+		return nil, errors.New("Неверный формат идентификатора пользователя")
 	}
 	return uc.movementRepo.GetByUserID(uuidID)
 }
