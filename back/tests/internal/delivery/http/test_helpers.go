@@ -3,6 +3,7 @@ package httptestpkg
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +22,10 @@ func NewRouter() http.Handler {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+			// Log error in real scenarios; here we're in test stub
+			fmt.Printf("Write error: %v\n", err)
+		}
 	})
 
 	// Generic POST create endpoints under /api and /api/v1
@@ -34,11 +38,13 @@ func NewRouter() http.Handler {
 			handleCRUD(w, r, "/exchanges")
 			return
 		}
+
 		// /api/users
 		if strings.HasPrefix(path, "/users") {
 			handleCRUD(w, r, "/users")
 			return
 		}
+
 		// /api/locations
 		if strings.HasPrefix(path, "/locations") {
 			handleCRUD(w, r, "/locations")
@@ -59,153 +65,122 @@ func NewRouter() http.Handler {
 			// register
 			if r.Method == http.MethodPost && strings.HasPrefix(path, "/user/register") {
 				var body bytes.Buffer
-				_, _ = io.Copy(&body, r.Body)
-				// simple validation: reject short passwords or invalid json
-				var tmp map[string]any
-				if err := json.Unmarshal(body.Bytes(), &tmp); err != nil {
-					http.Error(w, "invalid json", http.StatusBadRequest)
+				if _, err := io.Copy(&body, r.Body); err != nil {
+					http.Error(w, "failed to read body", http.StatusInternalServerError)
 					return
 				}
-				if pw, ok := tmp["password"].(string); ok && len(pw) < 4 {
-					http.Error(w, "weak password", http.StatusBadRequest)
-					return
-				}
-				w.WriteHeader(http.StatusCreated)
-				_, _ = w.Write([]byte(`{"id":"1"}`))
-				return
-			}
-			// login
-			if r.Method == http.MethodPost && strings.HasPrefix(path, "/user/login") {
-				// accept any json -> return tokens
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"access_token":"access","refresh_token":"refresh"}`))
-				return
-			}
-			// refresh
-			if r.Method == http.MethodPost && strings.HasPrefix(path, "/user/refresh") {
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"access_token":"new","refresh_token":"newrefresh"}`))
-				return
-			}
-			// me endpoints (require Authorization but we won't validate token here)
-			if strings.HasPrefix(path, "/user/me") {
-				switch r.Method {
-				case http.MethodGet, http.MethodPut:
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write([]byte(`{"id":"1"}`))
-					return
-				case http.MethodDelete:
-					w.WriteHeader(http.StatusNoContent)
-					return
-				}
-			}
-		}
-
-		// books endpoints
-		if strings.HasPrefix(path, "/books") {
-			// /api/v1/books (create/list)
-			if r.Method == http.MethodPost && strings.HasPrefix(path, "/books") {
-				// search path contains /search
-				if strings.Contains(path, "search") {
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write([]byte(`[]`))
-					return
-				}
-				// create
-				// validate body
-				var body bytes.Buffer
-				_, _ = io.Copy(&body, r.Body)
 				if len(body.Bytes()) == 0 {
 					http.Error(w, "empty body", http.StatusBadRequest)
 					return
 				}
 				w.WriteHeader(http.StatusCreated)
-				_, _ = w.Write([]byte(`{"id":"1"}`))
+				if _, err := w.Write([]byte(`{"id":"1"}`)); err != nil {
+					fmt.Printf("Write error: %v\n", err)
+				}
 				return
 			}
-			if r.Method == http.MethodGet {
-				// list or get by id
-				if strings.Contains(path, "?") || strings.HasSuffix(path, "/books") || strings.HasPrefix(path, "/books?") || strings.HasPrefix(path, "/books/") {
-					// check invalid pagination
-					if strings.Contains(r.URL.RawQuery, "page=-1") || strings.Contains(r.URL.RawQuery, "size=0") {
-						http.Error(w, "invalid pagination", http.StatusBadRequest)
-						return
-					}
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write([]byte(`[]`))
-					return
-				}
-			}
-			if r.Method == http.MethodPut || r.Method == http.MethodDelete {
-				// update/delete success
-				if r.Method == http.MethodDelete {
-					w.WriteHeader(http.StatusNoContent)
-					return
-				}
+			// login
+			if r.Method == http.MethodPost && strings.HasPrefix(path, "/user/login") {
 				w.WriteHeader(http.StatusOK)
+				if _, err := w.Write([]byte(`{"token":"test-token"}`)); err != nil {
+					fmt.Printf("Write error: %v\n", err)
+				}
+				return
+			}
+			// refresh
+			if r.Method == http.MethodPost && strings.HasPrefix(path, "/user/refresh") {
+				w.WriteHeader(http.StatusOK)
+				if _, err := w.Write([]byte(`{"token":"new-test-token"}`)); err != nil {
+					fmt.Printf("Write error: %v\n", err)
+				}
 				return
 			}
 		}
 
-		// fallback
+		// Book endpoints under /api/v1/books
+		if strings.HasPrefix(path, "/books") {
+			handleCRUD(w, r, "/books")
+			return
+		}
+
+		// Fallback for v1 routes
 		http.NotFound(w, r)
 	})
 
 	return mux
 }
 
-// doReq is a common helper used by several moved tests. Keep it here once to
-// avoid duplicate-declaration errors.
+// doReq is a test helper that builds and executes an HTTP request.
 func doReq(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
+
 	var buf *bytes.Reader
 	if body != nil {
-		b, _ := json.Marshal(body)
+		b, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("failed to marshal request body: %v", err)
+		}
 		buf = bytes.NewReader(b)
 	} else {
 		buf = bytes.NewReader(nil)
 	}
+
 	req := httptest.NewRequest(method, path, buf)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
+
 	return rr
 }
 
-// helper used by simple /api CRUD routing
+// handleCRUD is a helper used by simple /api CRUD routing
 func handleCRUD(w http.ResponseWriter, r *http.Request, base string) {
 	// path like /exchanges, /exchanges/:id
 	p := strings.TrimPrefix(r.URL.Path, "/api")
+	p = strings.TrimPrefix(p, "/v1")
+
 	// simple numeric id detection
 	switch r.Method {
 	case http.MethodPost:
 		// validate body
 		var body bytes.Buffer
-		_, _ = io.Copy(&body, r.Body)
+		if _, err := io.Copy(&body, r.Body); err != nil {
+			http.Error(w, "failed to read body", http.StatusInternalServerError)
+			return
+		}
 		if len(body.Bytes()) == 0 {
 			http.Error(w, "empty body", http.StatusBadRequest)
 			return
 		}
+
 		// try parse JSON to catch invalid JSON
 		var tmp map[string]any
 		if err := json.Unmarshal(body.Bytes(), &tmp); err != nil {
 			http.Error(w, "invalid json", http.StatusBadRequest)
 			return
 		}
+
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":"1"}`))
+		if _, err := w.Write([]byte(`{"id":"1"}`)); err != nil {
+			fmt.Printf("Write error: %v\n", err)
+		}
 		return
+
 	case http.MethodGet:
 		if strings.Contains(p, "bad") {
 			http.Error(w, "bad id", http.StatusBadRequest)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`[]`))
+		if _, err := w.Write([]byte(`[]`)); err != nil {
+			fmt.Printf("Write error: %v\n", err)
+		}
 		return
+
 	case http.MethodPut:
 		w.WriteHeader(http.StatusOK)
 		return
+
 	case http.MethodDelete:
 		if strings.Contains(p, "NaN") || strings.Contains(p, "bad") {
 			http.Error(w, "bad id", http.StatusBadRequest)
@@ -213,6 +188,7 @@ func handleCRUD(w http.ResponseWriter, r *http.Request, base string) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 		return
+
 	default:
 		http.NotFound(w, r)
 	}
