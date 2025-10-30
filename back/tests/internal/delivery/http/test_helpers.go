@@ -178,6 +178,24 @@ func handleCRUD(w http.ResponseWriter, r *http.Request, base string) {
 		return
 
 	case http.MethodPut:
+		// Validate body for PUT requests
+		var body bytes.Buffer
+		if _, err := io.Copy(&body, r.Body); err != nil {
+			http.Error(w, "failed to read body", http.StatusInternalServerError)
+			return
+		}
+		if len(body.Bytes()) == 0 {
+			http.Error(w, "empty body", http.StatusBadRequest)
+			return
+		}
+
+		// try parse JSON to catch invalid JSON
+		var tmp map[string]any
+		if err := json.Unmarshal(body.Bytes(), &tmp); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+
 		w.WriteHeader(http.StatusOK)
 		return
 
