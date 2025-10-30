@@ -1,29 +1,11 @@
-package http
+package httptestpkg
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
-
-// helper to perform requests
-func doReq(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {
-	t.Helper()
-	var buf *bytes.Reader
-	if body != nil {
-		b, _ := json.Marshal(body)
-		buf = bytes.NewReader(b)
-	} else {
-		buf = bytes.NewReader(nil)
-	}
-	req := httptest.NewRequest(method, path, buf)
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	return rr
-}
 
 func TestUsers_IO(t *testing.T) {
 	r := NewRouter()
