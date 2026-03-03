@@ -10,7 +10,13 @@ import {
   CircularProgress,
   Alert,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from '@mui/material';
+import FlagIcon from '@mui/icons-material/Flag';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import RoomIcon from '@mui/icons-material/Room';
@@ -21,6 +27,7 @@ import { useAuth } from './AuthContext';
 import useBook from '../src/hooks/useBook';
 // useLocationsList removed: location is read-only from book
 import useRequestBook from '../src/hooks/useRequestBook';
+import moderService from '../src/services/moderService';
 import ButtonSpinner from '../src/components/ButtonSpinner';
 
 const BookDetailPage: React.FC = () => {
@@ -30,11 +37,29 @@ const BookDetailPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { book, loading, refresh } = useBook(bookId || undefined);
   const { requestBook, loading: requesting } = useRequestBook();
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [reporting, setReporting] = useState(false);
   const theme = useTheme();
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
   const titleRef = React.useRef<HTMLDivElement | null>(null);
   const blocksRef = React.useRef<HTMLDivElement | null>(null);
   const [heroMaxHeight, setHeroMaxHeight] = React.useState<number | undefined>(undefined);
+
+  const handleReport = async () => {
+    if (!reportReason.trim()) return;
+    setReporting(true);
+    try {
+      await moderService.reportBook(bookId as string, reportReason.trim());
+      showNotification('Жалоба отправлена модератору', 'success');
+      setReportOpen(false);
+      setReportReason('');
+    } catch (e: any) {
+      showNotification(e?.response?.data?.error || 'Ошибка при отправке жалобы', 'error');
+    } finally {
+      setReporting(false);
+    }
+  };
 
   const handleBooking = async () => {
     const locId = book?.location?.id;
@@ -316,6 +341,48 @@ const BookDetailPage: React.FC = () => {
                       <Button variant="text" size="small" onClick={() => navigate('/login')}>Войти</Button>
                     </Box>
                   )}
+
+                  {isAuthenticated && (
+                    <Button
+                      variant="text"
+                      color="error"
+                      size="small"
+                      startIcon={<FlagIcon />}
+                      sx={{ mt: 0.5 }}
+                      onClick={() => setReportOpen(true)}
+                    >
+                      Пожаловаться
+                    </Button>
+                  )}
+
+                  {/* Диалог жалобы */}
+                  <Dialog open={reportOpen} onClose={() => setReportOpen(false)} maxWidth="sm" fullWidth>
+                    <DialogTitle>Пожаловаться на объявление</DialogTitle>
+                    <DialogContent>
+                      <TextField
+                        autoFocus
+                        multiline
+                        rows={3}
+                        fullWidth
+                        label="Причина жалобы"
+                        value={reportReason}
+                        onChange={e => setReportReason(e.target.value)}
+                        sx={{ mt: 1 }}
+                        placeholder="Опишите, что не так с этим объявлением..."
+                      />
+                    </DialogContent>
+                    <DialogActions>
+                      <Button onClick={() => setReportOpen(false)}>Отмена</Button>
+                      <Button
+                        variant="contained"
+                        color="error"
+                        onClick={handleReport}
+                        disabled={!reportReason.trim() || reporting}
+                      >
+                        {reporting ? <ButtonSpinner /> : 'Отправить'}
+                      </Button>
+                    </DialogActions>
+                  </Dialog>
                 </Box>
               </Container>
             </>

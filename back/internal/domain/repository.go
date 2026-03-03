@@ -63,6 +63,16 @@ type ReviewRepository interface {
 	Delete(id uuid.UUID) error
 }
 
+// ReportRepository defines methods for report data access
+type ReportRepository interface {
+	Create(report *Report) error
+	GetByID(id uuid.UUID) (*Report, error)
+	GetAll(limit, offset int) ([]*Report, error)
+	GetPending(limit, offset int) ([]*Report, error)
+	UpdateStatus(id uuid.UUID, status ReportStatus) error
+	CountPending() (int64, error)
+}
+
 // BookMovementHistoryRepository defines methods for book movement history data access
 type BookMovementHistoryRepository interface {
 	Create(movement *BookMovementHistory) error

@@ -66,6 +66,28 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 	}
 }
 
+// RequireRole returns a middleware that aborts with 403 if the authenticated user's role
+// is not in the allowed list. Must be used after AuthMiddleware.
+func RequireRole(roles ...string) gin.HandlerFunc {
+	allowed := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		allowed[r] = true
+	}
+	return func(c *gin.Context) {
+		roleRaw, exists := c.Get("role")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Недостаточно прав"})
+			return
+		}
+		role, ok := roleRaw.(string)
+		if !ok || !allowed[role] {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Недостаточно прав"})
+			return
+		}
+		c.Next()
+	}
+}
+
 // OptionalAuthMiddleware attempts to parse Authorization header and set userId/role
 // if a valid token is provided. Unlike AuthMiddleware it does NOT abort the request
 // when the header is missing or invalid — it simply proceeds without setting auth

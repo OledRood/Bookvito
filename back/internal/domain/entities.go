@@ -124,6 +124,35 @@ type Review struct {
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`     // Дата создания
 }
 
+// ReportStatus represents the moderation state of a report
+type ReportStatus string
+
+const (
+	ReportPending   ReportStatus = "pending"
+	ReportResolved  ReportStatus = "resolved"
+	ReportDismissed ReportStatus = "dismissed"
+)
+
+// Report represents a user complaint about a book listing
+type Report struct {
+	ID        uuid.UUID    `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	BookID    uuid.UUID    `gorm:"type:uuid;not null;index" json:"book_id"`
+	Book      *Book        `gorm:"foreignKey:BookID" json:"book,omitempty"`
+	UserID    uuid.UUID    `gorm:"type:uuid;not null" json:"user_id"`
+	User      *User        `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Reason    string       `gorm:"type:text;not null" json:"reason"`
+	Status    ReportStatus `gorm:"type:varchar(20);default:'pending'" json:"status"`
+	CreatedAt time.Time    `gorm:"autoCreateTime" json:"created_at"`
+}
+
+// AdminStats represents platform-wide statistics for admin dashboard
+type AdminStats struct {
+	TotalUsers      int64 `json:"total_users"`
+	TotalBooks      int64 `json:"total_books"`
+	ActiveExchanges int64 `json:"active_exchanges"`
+	PendingReports  int64 `json:"pending_reports"`
+}
+
 // BookMovementHistory represents the history of book movements (История перемещений книги)
 type BookMovementHistory struct {
 	ID             uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`

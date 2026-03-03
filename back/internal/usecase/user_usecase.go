@@ -173,3 +173,16 @@ func (uc *UserUseCase) GetUserMovementHistory(userID string) ([]*domain.BookMove
 	}
 	return uc.movementRepo.GetByUserID(uuidID)
 }
+
+func (uc *UserUseCase) ListUsers(limit, offset int) ([]*domain.User, error) {
+	return uc.userRepo.List(limit, offset)
+}
+
+func (uc *UserUseCase) UpdateUserRole(userID uuid.UUID, role domain.UserRole) error {
+	user, err := uc.userRepo.GetByID(userID)
+	if err != nil {
+		return err
+	}
+	user.Role = role
+	return uc.userRepo.Update(user)
+}

@@ -5,6 +5,9 @@ import userService from '../src/services/userService';
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
+  isModer: boolean;
+  hasRole: (role: string) => boolean;
   login: (email: string, password: string) => Promise<boolean>;
   register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
@@ -136,10 +139,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     clearTokens();
   }, []);
 
+  const isAdmin = user?.role === 'admin';
+  const isModer = user?.role === 'moder' || user?.role === 'admin';
+  const hasRole = (role: string) => user?.role === role || (role === 'moder' && user?.role === 'admin');
+
   const value = useMemo(
     () => ({
       user,
       isAuthenticated,
+      isAdmin,
+      isModer,
+      hasRole,
       login,
       register,
       logout,
@@ -147,7 +157,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       clearTokens,
       setLoading,
     }),
-    [user, isAuthenticated, login, register, logout],
+    [user, isAuthenticated, isAdmin, isModer, login, register, logout],
   );
 
   if (loading) {

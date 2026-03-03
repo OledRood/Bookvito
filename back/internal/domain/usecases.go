@@ -9,9 +9,24 @@ type UserUseCase interface {
 	GetUserByID(id string) (*User, error)
 	UpdateUser(user *User) error
 	DeleteUser(id string) error
-	// ListUsers(limit, offset int) ([]*User, error)
+	ListUsers(limit, offset int) ([]*User, error)
+	UpdateUserRole(userID uuid.UUID, role UserRole) error
 	RefreshToken(refreshToken string) (*TokenResponse, error)
 	GetUserMovementHistory(userID string) ([]*BookMovementHistory, error)
+}
+
+// AdminUseCase интерфейс для административных операций
+type AdminUseCase interface {
+	GetStats() (*AdminStats, error)
+}
+
+// ModerUseCase интерфейс для операций модератора
+type ModerUseCase interface {
+	GetReports(limit, offset int) ([]*Report, error)
+	CreateReport(bookID uuid.UUID, userID uuid.UUID, reason string) error
+	ResolveReport(reportID uuid.UUID) error
+	DismissReport(reportID uuid.UUID) error
+	ArchiveBook(bookID uuid.UUID) error
 }
 
 // BookUseCase интерфейс для работы с книгами

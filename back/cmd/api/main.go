@@ -39,12 +39,15 @@ func main() {
 	exchangeRepo := postgres.NewExchangeRepository(db)
 	movementRepo := postgres.NewBookMovementHistoryRepository(db)
 	locationRepo := postgres.NewLocationRepository(db)
+	reportRepo := postgres.NewReportRepository(db)
 
 	// Initialize use cases
 	userUseCase := usecase.NewUserUseCase(userRepo, movementRepo, cfg.JWTSecret)
 	bookUseCase := usecase.NewBookUseCase(bookRepo, movementRepo, exchangeRepo)
 	exchangeUseCase := usecase.NewExchangeUseCase(exchangeRepo, bookRepo, userRepo, movementRepo)
 	locationUseCase := usecase.NewLocationUseCase(locationRepo)
+	adminUseCase := usecase.NewAdminUseCase(userRepo, bookRepo, exchangeRepo, reportRepo)
+	moderUseCase := usecase.NewModerUseCase(reportRepo, bookRepo)
 
 	// Initialize HTTP handlers
 	router := gin.Default()
@@ -65,7 +68,7 @@ func main() {
 	// Serve uploaded images from disk at /images
 	router.Static("/images", "./data/images")
 
-	http.NewRouter(router, userUseCase, bookUseCase, exchangeUseCase, locationUseCase, cfg)
+	http.NewRouter(router, userUseCase, bookUseCase, exchangeUseCase, locationUseCase, adminUseCase, moderUseCase, cfg)
 
 	// Запускаем фоновую задачу для отмены просроченных бронирований
 	go startExpiredExchangesCron(exchangeUseCase)

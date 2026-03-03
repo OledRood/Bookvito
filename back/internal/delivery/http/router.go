@@ -7,7 +7,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(router *gin.Engine, userUC domain.UserUseCase, bookUC domain.BookUseCase, exchangeUC domain.ExchangeUseCase, locationUC domain.LocationUseCase, cfg *config.Config) {
+func NewRouter(
+	router *gin.Engine,
+	userUC domain.UserUseCase,
+	bookUC domain.BookUseCase,
+	exchangeUC domain.ExchangeUseCase,
+	locationUC domain.LocationUseCase,
+	adminUC domain.AdminUseCase,
+	moderUC domain.ModerUseCase,
+	cfg *config.Config,
+) {
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
@@ -74,9 +83,38 @@ func NewRouter(router *gin.Engine, userUC domain.UserUseCase, bookUC domain.Book
 		{
 			locationHandler := NewLocationHandler(locationUC)
 			locations.GET("/:id", locationHandler.GetByID)
-			locations.POST("/create", locationHandler.Create)
 			locations.GET("/getAll", locationHandler.GetAll)
 
+			// Защищённые маршруты локаций (только admin)
+			locationsAuthed := locations.Group("/")
+			locationsAuthed.Use(AuthMiddleware(cfg.JWTSecret), RequireRole("admin"))
+			locationsAuthed.POST("/create", locationHandler.Create)
+			locationsAuthed.PUT("/:id", locationHandler.Update)
+			locationsAuthed.DELETE("/:id", locationHandler.Delete)
+		}
+
+		// Маршруты книги — жалоба от авторизованного пользователя
+		moderHandler := NewModerHandler(moderUC)
+		api.POST("/books/:id/report", AuthMiddleware(cfg.JWTSecret), moderHandler.CreateReport)
+
+		// Маршруты модератора (moder + admin)
+		moder := api.Group("/moder")
+		moder.Use(AuthMiddleware(cfg.JWTSecret), RequireRole("moder", "admin"))
+		{
+			moder.GET("/reports", moderHandler.GetReports)
+			moder.PUT("/reports/:id/resolve", moderHandler.ResolveReport)
+			moder.PUT("/reports/:id/dismiss", moderHandler.DismissReport)
+			moder.PUT("/books/:id/archive", moderHandler.ArchiveBook)
+		}
+
+		// Маршруты администратора (только admin)
+		adminHandler := NewAdminHandler(userUC, adminUC)
+		admin := api.Group("/admin")
+		admin.Use(AuthMiddleware(cfg.JWTSecret), RequireRole("admin"))
+		{
+			admin.GET("/stats", adminHandler.GetStats)
+			admin.GET("/users", adminHandler.ListUsers)
+			admin.PUT("/users/:id/role", adminHandler.UpdateUserRole)
 		}
 	}
 }

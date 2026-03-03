@@ -38,5 +38,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&domain.Exchange{},
 		&domain.Review{},
 		&domain.BookMovementHistory{},
+		&domain.Report{},
 	)
 }

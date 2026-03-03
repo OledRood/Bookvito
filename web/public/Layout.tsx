@@ -33,23 +33,27 @@ import HomeIcon from '@mui/icons-material/Home';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import BookIcon from '@mui/icons-material/MenuBook';
 import PersonIcon from '@mui/icons-material/Person';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import GavelIcon from '@mui/icons-material/Gavel';
 // TO_BE_REMOVED_BEFORE_RELEASE
 import PaletteIcon from '@mui/icons-material/Palette';
 
 const drawerWidth = 88;
 
-const navItems = [
-  { text: 'Главная', path: '/', icon: <HomeIcon /> },
-  // keep visible but disabled when not authenticated
-  { text: 'Создать', path: '/create', icon: <AddCircleOutlineIcon />, requiresAuth: true },
-  { text: 'Книги', path: '/books', icon: <BookIcon />, requiresAuth: true },
-  { text: 'Профиль', path: '/profile', icon: <PersonIcon />, auth: true },
-  // TO_BE_REMOVED_BEFORE_RELEASE
-  { text: 'Палетка', path: '/color-palette', icon: <PaletteIcon />, hidden: true },
-];
-
 const Layout: React.FC = () => {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout, isAdmin, isModer } = useAuth();
+
+  // Nav items that depend on role — evaluated at render time
+  const navItems = [
+    { text: 'Главная', path: '/', icon: <HomeIcon /> },
+    { text: 'Создать', path: '/create', icon: <AddCircleOutlineIcon />, requiresAuth: true },
+    { text: 'Книги', path: '/books', icon: <BookIcon />, requiresAuth: true },
+    { text: 'Профиль', path: '/profile', icon: <PersonIcon />, auth: true },
+    ...(isModer ? [{ text: 'Модерация', path: '/moder', icon: <GavelIcon />, requiresAuth: true }] : []),
+    ...(isAdmin ? [{ text: 'Админ', path: '/admin', icon: <AdminPanelSettingsIcon />, requiresAuth: true }] : []),
+    // TO_BE_REMOVED_BEFORE_RELEASE
+    { text: 'Палетка', path: '/color-palette', icon: <PaletteIcon />, hidden: true },
+  ];
 
   const location = useLocation();
   const hideAppBar = location.pathname.startsWith('/book/');
