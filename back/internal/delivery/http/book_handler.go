@@ -27,6 +27,23 @@ func NewBookHandler(bookUC domain.BookUseCase) *BookHandler {
 	return &BookHandler{bookUC: bookUC}
 }
 
+// AutoFillBook returns metadata for a book using external provider (e.g., Google Books).
+func (h *BookHandler) AutoFillBook(c *gin.Context) {
+	query := strings.TrimSpace(c.Query("q"))
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Параметр q обязателен"})
+		return
+	}
+
+	meta, err := h.bookUC.AutoFill(query)
+	if err != nil {
+		respondBookUseCaseError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, meta)
+}
+
 // UploadImage handles multipart image upload. Field name: "image".
 // It saves file into ./data/images and returns JSON { "url": "/images/<filename>" }.
 func (h *BookHandler) UploadImage(c *gin.Context) {

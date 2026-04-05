@@ -39,6 +39,8 @@ type BookUseCase interface {
 	GetBooksList(filter BookListFilter) (*BookListResponse, error)
 	UpdateBook(bookID uuid.UUID, userID uuid.UUID, isAdmin bool, input BookUpdateInput) (*Book, error)
 	GetBookByID(bookID uuid.UUID) (*Book, error)
+	// AutoFill fetches book metadata from external provider by query (e.g., isbn:978...).
+	AutoFill(query string) (*BookMeta, error)
 	// DeleteBook deletes (marks deleted) a book. If isAdmin is true the caller is allowed
 	// to delete any book. Otherwise the caller must be the user who currently has the
 	// book on their shelf (i.e. borrowed by them).

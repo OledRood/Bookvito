@@ -8,19 +8,46 @@ export interface LocationItem {
   address?: string;
 }
 
+let locationsCache: LocationItem[] | null = null;
+let locationsPromise: Promise<LocationItem[]> | null = null;
+
+const fetchLocations = async (): Promise<LocationItem[]> => {
+  if (locationsCache) return locationsCache;
+  if (locationsPromise) return locationsPromise;
+
+  locationsPromise = api.get<LocationItem[]>('locations/getAll')
+    .then((resp) => {
+      const normalized = Array.isArray(resp.data) ? resp.data : [];
+      locationsCache = normalized;
+      return normalized;
+    })
+    .finally(() => {
+      locationsPromise = null;
+    });
+
+  return locationsPromise;
+};
+
 export const useLocationsList = () => {
   const [locations, setLocations] = useState<LocationItem[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!locationsCache);
   const { showNotification } = useNotification();
 
   useEffect(() => {
     let mounted = true;
+
+    if (locationsCache) {
+      setLocations(locationsCache);
+      setLoading(false);
+      return () => { mounted = false; };
+    }
+
     const fetch = async () => {
       setLoading(true);
       try {
-        const resp = await api.get<LocationItem[]>('locations/getAll');
+        const resp = await fetchLocations();
         if (!mounted) return;
-        setLocations(resp.data || []);
+        setLocations(resp);
       } catch (err: any) {
         const msg = err?.response?.data?.message || err.message || 'Ошибка при загрузке локаций';
         showNotification(msg, 'error');

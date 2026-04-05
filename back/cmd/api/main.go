@@ -4,6 +4,7 @@ import (
 	"bookvito/config"
 	"bookvito/internal/delivery/http"
 	"bookvito/internal/repository/postgres"
+	"bookvito/internal/service/googlebooks"
 	"bookvito/internal/usecase"
 	"bookvito/pkg/database"
 	"log"
@@ -43,7 +44,9 @@ func main() {
 
 	// Initialize use cases
 	userUseCase := usecase.NewUserUseCase(userRepo, movementRepo, cfg.JWTSecret)
-	bookUseCase := usecase.NewBookUseCase(bookRepo, movementRepo, exchangeRepo, locationRepo)
+	googleBooksSvc := googlebooks.New(cfg.GoogleBooksAPIKey)
+
+	bookUseCase := usecase.NewBookUseCase(bookRepo, movementRepo, exchangeRepo, locationRepo, googleBooksSvc)
 	exchangeUseCase := usecase.NewExchangeUseCase(exchangeRepo, bookRepo, userRepo, movementRepo)
 	locationUseCase := usecase.NewLocationUseCase(locationRepo)
 	adminUseCase := usecase.NewAdminUseCase(userRepo, bookRepo, exchangeRepo, reportRepo)
@@ -56,7 +59,14 @@ func main() {
 	// Allow browser dev servers on localhost (any port) and 127.0.0.1
 	router.Use(cors.New(cors.Config{
 		AllowOriginFunc: func(origin string) bool {
-			return strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1")
+			if strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1") {
+				return true
+			}
+
+			normalizedOrigin := strings.TrimRight(strings.ToLower(origin), "/")
+			normalizedSiteURL := strings.TrimRight(strings.ToLower(cfg.SiteURL), "/")
+
+			return normalizedOrigin == normalizedSiteURL || normalizedOrigin == "https://www.bookvito.ru"
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
@@ -67,6 +77,22 @@ func main() {
 
 	// Serve uploaded images from disk at /images
 	router.Static("/images", "./data/images")
+
+	router.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(404, gin.H{"error": "Маршрут не найден"})
+			return
+		}
+		c.JSON(404, gin.H{"error": "Страница не найдена"})
+	})
+
+	router.NoMethod(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(405, gin.H{"error": "Метод не поддерживается"})
+			return
+		}
+		c.JSON(405, gin.H{"error": "Метод не поддерживается"})
+	})
 
 	http.NewRouter(router, userUseCase, bookUseCase, exchangeUseCase, locationUseCase, adminUseCase, moderUseCase, cfg)
 

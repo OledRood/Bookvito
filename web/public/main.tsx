@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { HelmetProvider } from 'react-helmet-async';
 import App from './App';
 import { AuthProviderWithManager } from './AuthProviderWithManager';
 import { ThemeProvider } from './ThemeContext';
@@ -38,18 +39,20 @@ window.addEventListener('error', globalImageErrorHandler, true);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <ThemeProvider>
-        <AuthProviderWithManager>
-          <NotificationProvider>
-            <ErrorBoundary>
-              <ServerCheck>
-                <App />
-              </ServerCheck>
-            </ErrorBoundary>
-          </NotificationProvider>
-        </AuthProviderWithManager>
-      </ThemeProvider>
-    </BrowserRouter>
+    <HelmetProvider>
+      <BrowserRouter>
+        <ThemeProvider>
+          <AuthProviderWithManager>
+            <NotificationProvider>
+              <ErrorBoundary>
+                <ServerCheck>
+                  <App />
+                </ServerCheck>
+              </ErrorBoundary>
+            </NotificationProvider>
+          </AuthProviderWithManager>
+        </ThemeProvider>
+      </BrowserRouter>
+    </HelmetProvider>
   </React.StrictMode>,
 );

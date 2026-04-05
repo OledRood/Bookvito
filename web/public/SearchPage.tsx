@@ -22,6 +22,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ViewAgendaIcon from '@mui/icons-material/ViewAgenda';
 import ViewStreamIcon from '@mui/icons-material/ViewStream';
 import BookCard from './BookCard';
+import useLocationsList from '../src/hooks/useLocationsList';
 import api from '../src/services/api';
 
 type ScrollMode = 'continuous' | 'paged';
@@ -37,12 +38,6 @@ type BookItem = {
 type BookListResponse = {
   items?: BookItem[];
   has_more?: boolean;
-};
-
-type LocationItem = {
-  id: string;
-  name?: string;
-  address?: string;
 };
 
 const DEFAULT_LIMIT = 16;
@@ -71,8 +66,8 @@ const SearchPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
-
-  const [locations, setLocations] = useState<LocationItem[]>([]);
+  const { locations: locationsData } = useLocationsList();
+  const locations = locationsData || [];
 
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<BookItem[]>([]);
@@ -89,28 +84,6 @@ const SearchPage: React.FC = () => {
   const showCatalogResults = useMemo(() => {
     return hasSearched || hasAnyFilter || Boolean(submittedQuery);
   }, [hasSearched, hasAnyFilter, submittedQuery]);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadLocations = async () => {
-      try {
-        const resp = await api.get('locations/getAll');
-        if (!active) return;
-        const list = Array.isArray(resp.data) ? resp.data : [];
-        setLocations(list);
-      } catch {
-        if (!active) return;
-        setLocations([]);
-      }
-    };
-
-    loadLocations();
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const fetchBooks = async (pageToLoad: number, append: boolean, searchValue?: string) => {
     const cleanSearch = (searchValue ?? submittedQuery).trim();
@@ -191,15 +164,19 @@ const SearchPage: React.FC = () => {
   useEffect(() => {
     if (!showCatalogResults) return;
 
-    setLoading(true);
-    setError(null);
-    fetchBooks(1, false)
-      .catch((e: any) => {
-        setResults([]);
-        setHasMore(false);
-        setError(e?.response?.data?.error || e?.message || 'Ошибка обновления выдачи');
-      })
-      .finally(() => setLoading(false));
+    const timeout = window.setTimeout(() => {
+      setLoading(true);
+      setError(null);
+      fetchBooks(1, false)
+        .catch((e: any) => {
+          setResults([]);
+          setHasMore(false);
+          setError(e?.response?.data?.error || e?.message || 'Ошибка обновления выдачи');
+        })
+        .finally(() => setLoading(false));
+    }, 180);
+
+    return () => window.clearTimeout(timeout);
   }, [showCatalogResults, mode, sortBy, order, statusFilter, locationFilter, limit]);
 
   useEffect(() => {

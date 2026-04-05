@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Toolbar,
   Typography,
   Container,
   Box,
@@ -26,8 +25,10 @@ import {
   Button,
 } from '@mui/material';
 import { Outlet, Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
+import { BOOKS_NEW_PATH, MODERATION_PATH } from '../src/routing/paths';
 import ThemeSwitcher from './ThemeSwitcher';
 import { useAuth } from './AuthContext';
+import SeoManager from './SeoManager';
 import AccountCircle from '@mui/icons-material/AccountCircle';
 import HomeIcon from '@mui/icons-material/Home';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
@@ -46,10 +47,10 @@ const Layout: React.FC = () => {
   // Nav items that depend on role — evaluated at render time
   const navItems = [
     { text: 'Главная', path: '/', icon: <HomeIcon /> },
-    { text: 'Создать', path: '/create', icon: <AddCircleOutlineIcon />, requiresAuth: true },
+    { text: 'Создать', path: BOOKS_NEW_PATH, icon: <AddCircleOutlineIcon />, requiresAuth: true },
     { text: 'Книги', path: '/books', icon: <BookIcon />, requiresAuth: true },
     { text: 'Профиль', path: '/profile', icon: <PersonIcon />, auth: true },
-    ...(isModer ? [{ text: 'Модерация', path: '/moder', icon: <GavelIcon />, requiresAuth: true }] : []),
+    ...(isModer ? [{ text: 'Модерация', path: MODERATION_PATH, icon: <GavelIcon />, requiresAuth: true }] : []),
     ...(isAdmin ? [{ text: 'Админ', path: '/admin', icon: <AdminPanelSettingsIcon />, requiresAuth: true }] : []),
     // TO_BE_REMOVED_BEFORE_RELEASE
     { text: 'Палетка', path: '/color-palette', icon: <PaletteIcon />, hidden: true },
@@ -101,145 +102,142 @@ const Layout: React.FC = () => {
 
   if (isDesktop) {
     return (
-      <Box sx={{ display: 'flex' }}>
-        <Drawer
-          variant="permanent"
-          sx={{
-            width: drawerWidth,
-            flexShrink: 0,
-            [`& .MuiDrawer-paper`]: {
+      <>
+        <SeoManager />
+        <Box sx={{ display: 'flex' }}>
+          <Drawer
+            variant="permanent"
+            sx={{
               width: drawerWidth,
-              boxSizing: 'border-box',
-              display: 'flex',
-              flexDirection: 'column',
-              height: '100%'
-            },
-          }}
-        >
-          <Box sx={{ flex: 1, overflow: 'auto' }}>
-            <List>
-              {filteredNavItems.map((item) => {
-                const disabled = Boolean(item.requiresAuth && !isAuthenticated);
-                return (
-                  // add vertical spacing between buttons in desktop drawer
-                  <ListItem key={item.text} disablePadding sx={{ mb: 2 }}>
-                    <ListItemButton
-                      component={disabled ? 'div' : RouterLink}
-                      to={disabled ? undefined : item.path}
-                      onClick={(e: React.MouseEvent) => {
-                        if (disabled) {
-                          e.preventDefault();
-                          openAuthDialog(item.path);
-                        }
-                      }}
-                      disableRipple
-                      disableTouchRipple
-                      selected={location.pathname === item.path}
-                      sx={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        width: '96px',
-                        height: '64px',
-                        gap: '0px',
-                        padding: '6px 0px',
-                        color: disabled ? 'var(--md-sys-color-on-surface-variant)' : 'var(--md-sys-color-on-surface)',
-                        cursor: disabled ? 'not-allowed' : 'pointer',
-                        pointerEvents: 'auto',
-                        transition: 'background-color .18s ease, color .18s ease, transform .12s ease',
-                        '&:hover': {
-                          backgroundColor: 'transparent',
-                        },
-                        '&.Mui-selected': {
-                          color: 'var(--md-sys-color-primary)',
-                          backgroundColor: 'transparent',
-                        },
-                        // 1) убираем подсветку фона при наведении на активную кнопку
-                        '&.Mui-selected:hover': {
-                          backgroundColor: 'transparent',
-                        },
-                        // 2) при наведении box горит желтым
-                        '&:hover .nav-highlight:not([data-selected])': {
-                          backgroundColor: 'var(--md-sys-color-surface-dim)',
-                        },
-                      }}
-                    >
-                      <ListItemIcon
+              flexShrink: 0,
+              [`& .MuiDrawer-paper`]: {
+                width: drawerWidth,
+                boxSizing: 'border-box',
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%'
+              },
+            }}
+          >
+            <Box sx={{ flex: 1, overflow: 'auto' }}>
+              <List>
+                {filteredNavItems.map((item) => {
+                  const disabled = Boolean(item.requiresAuth && !isAuthenticated);
+                  return (
+                    // add vertical spacing between buttons in desktop drawer
+                    <ListItem key={item.text} disablePadding sx={{ mb: 2 }}>
+                      <ListItemButton
+                        component={disabled ? 'div' : RouterLink}
+                        to={disabled ? undefined : item.path}
+                        onClick={(e: React.MouseEvent) => {
+                          if (disabled) {
+                            e.preventDefault();
+                            openAuthDialog(item.path);
+                          }
+                        }}
+                        disableRipple
+                        disableTouchRipple
+                        selected={location.pathname === item.path}
                         sx={{
-                          minWidth: 0,
                           display: 'flex',
+                          flexDirection: 'column',
                           justifyContent: 'center',
                           alignItems: 'center',
-                          position: 'relative',
-                          height: 40,
-                          width: 56,
-                          overflow: 'visible',
-                          // никаких mb или margin
-                          p: 0,
+                          width: '96px',
+                          height: '64px',
+                          gap: '0px',
+                          padding: '6px 0px',
+                          color: disabled ? 'var(--md-sys-color-on-surface-variant)' : 'var(--md-sys-color-on-surface)',
+                          cursor: disabled ? 'not-allowed' : 'pointer',
+                          pointerEvents: 'auto',
+                          transition: 'background-color .18s ease, color .18s ease, transform .12s ease',
+                          '&:hover': {
+                            backgroundColor: 'transparent',
+                          },
+                          '&.Mui-selected': {
+                            color: 'var(--md-sys-color-primary)',
+                            backgroundColor: 'transparent',
+                          },
+                          '&.Mui-selected:hover': {
+                            backgroundColor: 'transparent',
+                          },
+                          '&:hover .nav-highlight:not([data-selected])': {
+                            backgroundColor: 'var(--md-sys-color-surface-dim)',
+                          },
                         }}
                       >
-                        <Box
-                          className="nav-highlight"
-                          data-selected={location.pathname === item.path ? '1' : undefined}
+                        <ListItemIcon
                           sx={{
-                            width: 56,
-                            height: 32,
-                            borderRadius: 18,
-                  backgroundColor: location.pathname === item.path ? 'var(--md-sys-color-primary-container)' : 'transparent',
-                            transition: 'background-color 0.12s ease',
+                            minWidth: 0,
                             display: 'flex',
                             justifyContent: 'center',
                             alignItems: 'center',
                             position: 'relative',
-                            zIndex: 0,
+                            height: 40,
+                            width: 56,
+                            overflow: 'visible',
+                            p: 0,
                           }}
                         >
-                          {item.icon}
-                        </Box>
-                      </ListItemIcon>
+                          <Box
+                            className="nav-highlight"
+                            data-selected={location.pathname === item.path ? '1' : undefined}
+                            sx={{
+                              width: 56,
+                              height: 32,
+                              borderRadius: 18,
+                              backgroundColor: location.pathname === item.path ? 'var(--md-sys-color-primary-container)' : 'transparent',
+                              transition: 'background-color 0.12s ease',
+                              display: 'flex',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              position: 'relative',
+                              zIndex: 0,
+                            }}
+                          >
+                            {item.icon}
+                          </Box>
+                        </ListItemIcon>
 
-
-                      <ListItemText
-                        primary={item.text}
-                        primaryTypographyProps={{
-                          align: 'center',
-                          sx: {
-                            color: 'var(--M3/sys/light/on-surface-variant, var(--Schemes-OnSurfaceVariant, rgba(73, 69, 79, 1)))',
-                            fontFamily: 'var(--Static-LabelMedium-Font, Roboto)',
-                            fontSize: '12px',
-                            fontWeight: 500,
-                            lineHeight: '16px',
-                            letterSpacing: '0.5px'
-                          }
-                        }}
-                        sx={{ my: 0 }}
-                      />
-                    </ListItemButton>
-
-
-                  </ListItem>
-                );
-              })}
-            </List>
+                        <ListItemText
+                          primary={item.text}
+                          primaryTypographyProps={{
+                            align: 'center',
+                            sx: {
+                              color: 'var(--M3/sys/light/on-surface-variant, var(--Schemes-OnSurfaceVariant, rgba(73, 69, 79, 1)))',
+                              fontFamily: 'var(--Static-LabelMedium-Font, Roboto)',
+                              fontSize: '12px',
+                              fontWeight: 500,
+                              lineHeight: '16px',
+                              letterSpacing: '0.5px'
+                            }
+                          }}
+                          sx={{ my: 0 }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  );
+                })}
+              </List>
+            </Box>
+            <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <ThemeSwitcher />
+            </Box>
+          </Drawer>
+          <Box component="div" sx={{ flexGrow: 1, px: 3, pt: 1.5, pb: 3 }}>
+            <Outlet />
           </Box>
-          <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <ThemeSwitcher />
-          </Box>
-        </Drawer>
-        <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-          <Toolbar />
-          <Outlet />
+          {authDialog}
         </Box>
-        {authDialog}
-      </Box>
+      </>
     );
   }
 
   // --- Мобильная версия с нижней навигацией ---
   return (
     <>
-      <Box component="main" sx={{ pb: 7 }}>
+      <SeoManager />
+      <Box component="div" sx={{ pb: 7 }}>
         <Outlet />
       </Box>
       <Paper

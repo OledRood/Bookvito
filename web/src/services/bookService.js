@@ -85,6 +85,11 @@ export const setBookImage = async (bookId, imageUrl) => {
   return resp.data;
 };
 
+export const autoFillBook = async (query) => {
+  const resp = await api.get('books/auto-fill', { params: { q: query } });
+  return resp.data || null;
+};
+
 export const deleteBookImage = async (bookId) => {
   const resp = await api.delete(`books/image/${bookId}`);
   return resp.data;
@@ -105,5 +110,6 @@ export default {
   returnBook,
   uploadBookImage,
   setBookImage,
+  autoFillBook,
   deleteBookImage,
 };

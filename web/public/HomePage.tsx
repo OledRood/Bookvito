@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 import {
   Alert,
   Box,
@@ -24,8 +25,11 @@ import ViewAgendaIcon from '@mui/icons-material/ViewAgenda';
 import ViewStreamIcon from '@mui/icons-material/ViewStream';
 import BookCard from '../shared/components/BookCard';
 import useBooksList, { BookSummary } from '../src/hooks/useBooksList';
+import useLocationsList from '../src/hooks/useLocationsList';
 import SkeletonCard from '../src/components/SkeletonCard';
 import api from '../src/services/api';
+import { buildCanonicalUrl } from '../src/seo/shared';
+import { getConfiguredSiteUrl } from './seo/runtime';
 
 type ScrollMode = 'continuous' | 'paged';
 
@@ -34,14 +38,8 @@ type BookListResponse = {
   has_more?: boolean;
 };
 
-type LocationItem = {
-  id: string;
-  name?: string;
-  address?: string;
-};
-
 const DEFAULT_LIMIT = 16;
-const LIMIT_OPTIONS = [8, 12, 16, 24, 32];
+const LIMIT_OPTIONS = [4, 8, 12, 16, 24, 32];
 
 const SORT_OPTIONS = [
   { value: 'created_at', label: 'Сначала новые' },
@@ -59,6 +57,9 @@ const STATUS_OPTIONS = [
 
 const HomePage: React.FC = () => {
   const { books, loading } = useBooksList();
+  const { locations: locationsData } = useLocationsList();
+  const locations = locationsData || [];
+  const siteUrl = getConfiguredSiteUrl();
 
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
@@ -70,13 +71,13 @@ const HomePage: React.FC = () => {
   const [locationFilter, setLocationFilter] = useState('');
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
 
-  const [locations, setLocations] = useState<LocationItem[]>([]);
   const [searchResults, setSearchResults] = useState<BookSummary[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showDelayedSearchLoading, setShowDelayedSearchLoading] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const autoLoadRef = useRef<HTMLDivElement | null>(null);
@@ -88,27 +89,6 @@ const HomePage: React.FC = () => {
   const showCatalogResults = useMemo(() => {
     return hasSearched || hasAnyFilter || Boolean(submittedQuery);
   }, [hasSearched, hasAnyFilter, submittedQuery]);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadLocations = async () => {
-      try {
-        const resp = await api.get('locations/getAll');
-        if (!active) return;
-        setLocations(Array.isArray(resp.data) ? resp.data : []);
-      } catch {
-        if (!active) return;
-        setLocations([]);
-      }
-    };
-
-    loadLocations();
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const normalizeBooks = (items: any[]): BookSummary[] => {
     return items.map((b) => ({
@@ -197,19 +177,41 @@ const HomePage: React.FC = () => {
     setLimit(DEFAULT_LIMIT);
   };
 
+  const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    runFreshSearch();
+  };
+
   useEffect(() => {
     if (!showCatalogResults) return;
 
-    setSearchLoading(true);
-    setSearchError(null);
-    fetchBooks(1, false)
-      .catch((e: any) => {
-        setSearchResults([]);
-        setHasMore(false);
-        setSearchError(e?.response?.data?.error || e?.message || 'Ошибка обновления выдачи');
-      })
-      .finally(() => setSearchLoading(false));
+    const timeout = window.setTimeout(() => {
+      setSearchLoading(true);
+      setSearchError(null);
+      fetchBooks(1, false)
+        .catch((e: any) => {
+          setSearchResults([]);
+          setHasMore(false);
+          setSearchError(e?.response?.data?.error || e?.message || 'Ошибка обновления выдачи');
+        })
+        .finally(() => setSearchLoading(false));
+    }, 180);
+
+    return () => window.clearTimeout(timeout);
   }, [showCatalogResults, mode, sortBy, order, statusFilter, locationFilter, limit]);
+
+  useEffect(() => {
+    if (!searchLoading) {
+      setShowDelayedSearchLoading(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setShowDelayedSearchLoading(true);
+    }, 180);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchLoading]);
 
   useEffect(() => {
     if (mode !== 'continuous' || !hasSearched || searchLoading || !hasMore || searchResults.length === 0) return;
@@ -245,38 +247,63 @@ const HomePage: React.FC = () => {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  const homeCanonicalUrl = buildCanonicalUrl(siteUrl, '/');
+  const hasSearchResults = searchResults.length > 0;
+  const showSearchSkeletons = showCatalogResults && searchLoading && showDelayedSearchLoading && !hasSearchResults;
+  const showSearchRefreshIndicator = showCatalogResults && searchLoading && showDelayedSearchLoading && hasSearchResults;
+  const websiteJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Bookvito',
+    url: homeCanonicalUrl,
+    inLanguage: 'ru-RU',
+    description: 'Bookvito помогает находить, просматривать и бронировать книги в едином каталоге.',
+  };
+
   return (
-    <Container maxWidth="xl" sx={{ py: { xs: 2, md: 4 } }}>
-      <Box sx={{ mb: 3 }}>
-        <TextField
-          fullWidth
-          variant="outlined"
-          value={query}
-          inputRef={inputRef}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') runFreshSearch(); }}
-          placeholder="Ищите по названию или автору"
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <IconButton
-                  size="small"
-                  onClick={runFreshSearch}
-                  aria-label="поиск"
-                >
-                  {searchLoading ? <CircularProgress size={18} /> : <SearchIcon />}
-                </IconButton>
-              </InputAdornment>
-            ),
-            endAdornment: query ? (
-              <InputAdornment position="end">
-                <IconButton size="small" onClick={() => { setQuery(''); inputRef.current?.focus(); }} aria-label="очистить поиск">
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </InputAdornment>
-            ) : null,
-          }}
-        />
+    <Container component="main" maxWidth="xl" sx={{ py: { xs: 2, md: 4 } }}>
+      <Helmet>
+        <script type="application/ld+json">
+          {JSON.stringify(websiteJsonLd)}
+        </script>
+      </Helmet>
+
+      <Box component="header" sx={{ mb: 3 }}>
+        <Box component="form" role="search" onSubmit={handleSearchSubmit}>
+          <TextField
+            fullWidth
+            variant="outlined"
+            value={query}
+            inputRef={inputRef}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Ищите по названию или автору"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <IconButton
+                    size="small"
+                    type="submit"
+                    aria-label="поиск"
+                  >
+                    {showDelayedSearchLoading ? <CircularProgress size={18} /> : <SearchIcon />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+              endAdornment: query ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    type="button"
+                    onClick={() => { setQuery(''); inputRef.current?.focus(); }}
+                    aria-label="очистить поиск"
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            }}
+          />
+        </Box>
       </Box>
 
       <Box
@@ -287,8 +314,14 @@ const HomePage: React.FC = () => {
           alignItems: 'start',
         }}
       >
-        <Box>
+        <Box component="section" aria-labelledby="home-results-heading">
           {searchError && <Alert severity="error" sx={{ mb: 2 }}>{searchError}</Alert>}
+
+          {showCatalogResults && (
+            <Typography id="home-results-heading" variant="h6" component="h2" sx={{ mb: 2, fontWeight: 700 }}>
+              Результаты поиска
+            </Typography>
+          )}
 
           {(submittedQuery || hasAnyFilter) && (
             <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
@@ -300,17 +333,35 @@ const HomePage: React.FC = () => {
             </Stack>
           )}
 
+          {showSearchRefreshIndicator && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'text.secondary' }}>
+                <CircularProgress size={14} />
+                <Typography variant="caption">Обновляем результаты...</Typography>
+              </Stack>
+            </Box>
+          )}
+
           <Box
+            component="ul"
             sx={{
               display: 'grid',
-              gap: 3,
+              gap: { xs: 2, md: 2.5 },
               gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' },
+              listStyle: 'none',
+              m: 0,
+              p: 0,
             }}
           >
-            {showCatalogResults && searchLoading && Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+            {showSearchSkeletons && Array.from({ length: 8 }).map((_, i) => (
+              <Box component="li" key={i}>
+                <SkeletonCard />
+              </Box>
+            ))}
 
             {showCatalogResults && !searchLoading && searchResults.length === 0 && (
               <Box
+                component="li"
                 sx={{
                   gridColumn: '1 / -1',
                   p: 4,
@@ -328,16 +379,24 @@ const HomePage: React.FC = () => {
               </Box>
             )}
 
-            {showCatalogResults && !searchLoading && searchResults.map((b: BookSummary) => (
-              <BookCard key={b.id} id={b.id as any} imageUrl={b.imageUrl || ''} title={b.title} author={b.author} />
+            {showCatalogResults && searchResults.map((b: BookSummary) => (
+              <Box component="li" key={b.id}>
+                <BookCard id={b.id as any} imageUrl={b.imageUrl || ''} title={b.title} author={b.author} />
+              </Box>
             ))}
 
-            {!showCatalogResults && loading && Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+            {!showCatalogResults && loading && Array.from({ length: 8 }).map((_, i) => (
+              <Box component="li" key={i}>
+                <SkeletonCard />
+              </Box>
+            ))}
             {!showCatalogResults && !loading && (!books || books.length === 0) && (
-              <Box sx={{ gridColumn: '1 / -1', p: 2 }}>Нет книг для отображения.</Box>
+              <Box component="li" sx={{ gridColumn: '1 / -1', p: 2 }}>Нет книг для отображения.</Box>
             )}
             {!showCatalogResults && !loading && books && books.map((b: BookSummary) => (
-              <BookCard key={b.id} id={b.id as any} imageUrl={b.imageUrl || ''} title={b.title} author={b.author} />
+              <Box component="li" key={b.id}>
+                <BookCard id={b.id as any} imageUrl={b.imageUrl || ''} title={b.title} author={b.author} />
+              </Box>
             ))}
           </Box>
 
@@ -367,7 +426,7 @@ const HomePage: React.FC = () => {
           )}
         </Box>
 
-        <Box sx={{ position: { lg: 'sticky' }, top: { lg: 96 } }}>
+        <Box component="aside" aria-labelledby="home-filters-heading" sx={{ position: { lg: 'sticky' }, top: { lg: 96 } }}>
           <Box
             sx={{
               p: 2,
@@ -378,7 +437,7 @@ const HomePage: React.FC = () => {
               boxShadow: '0 4px 12px rgba(15, 23, 42, 0.04)',
             }}
           >
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
+            <Typography id="home-filters-heading" variant="h6" component="h2" sx={{ mb: 2, fontWeight: 700 }}>
               Фильтры и сортировка
             </Typography>
 

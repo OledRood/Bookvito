@@ -17,15 +17,31 @@ type BookUseCase struct {
 	movementHistoryRepo domain.BookMovementHistoryRepository
 	exchangeUseCaseRepo domain.ExchangeRepository
 	locationRepo        domain.LocationRepository
+	metadataProvider    domain.BookMetadataProvider
 }
 
-func NewBookUseCase(bookRepo domain.BookRepository, movementHistoryRepo domain.BookMovementHistoryRepository, exchangeUseCaseRepo domain.ExchangeRepository, locationRepo domain.LocationRepository) *BookUseCase {
+func NewBookUseCase(bookRepo domain.BookRepository, movementHistoryRepo domain.BookMovementHistoryRepository, exchangeUseCaseRepo domain.ExchangeRepository, locationRepo domain.LocationRepository, metadataProvider domain.BookMetadataProvider) *BookUseCase {
 	return &BookUseCase{
 		bookRepo:            bookRepo,
 		movementHistoryRepo: movementHistoryRepo,
 		exchangeUseCaseRepo: exchangeUseCaseRepo,
 		locationRepo:        locationRepo,
+		metadataProvider:    metadataProvider,
 	}
+}
+
+// AutoFill fetches book metadata from the configured provider by query (isbn or title).
+func (uc *BookUseCase) AutoFill(query string) (*domain.BookMeta, error) {
+	if uc.metadataProvider == nil {
+		return nil, errors.New("metadata provider is not configured")
+	}
+
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return nil, domain.NewValidationError("q is required")
+	}
+
+	return uc.metadataProvider.Search(trimmed)
 }
 
 func (uc *BookUseCase) CreateBook(book *domain.Book) error {

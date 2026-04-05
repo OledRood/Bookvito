@@ -30,9 +30,37 @@ const buttonBeat = keyframes`
   100% { transform: translateY(0) scale(1); box-shadow: 0 8px 24px rgba(16,24,40,0.12); }
 `;
 
+const SERVER_CHECK_CACHE_KEY = 'bookvito-server-check-ok';
+const SERVER_CHECK_TTL_MS = 5 * 60 * 1000;
+
+const readCachedAvailability = () => {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const raw = window.sessionStorage.getItem(SERVER_CHECK_CACHE_KEY);
+    if (!raw) return false;
+
+    const parsed = JSON.parse(raw);
+    return parsed?.ok === true && typeof parsed.ts === 'number' && (Date.now() - parsed.ts) < SERVER_CHECK_TTL_MS;
+  } catch {
+    return false;
+  }
+};
+
+const writeCachedAvailability = () => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(SERVER_CHECK_CACHE_KEY, JSON.stringify({ ok: true, ts: Date.now() }));
+  } catch {
+    // ignore
+  }
+};
+
 const ServerCheck: React.FC<PropsWithChildren<{}>> = ({ children }) => {
-  const [checking, setChecking] = useState(true);
-  const [available, setAvailable] = useState<boolean | null>(null);
+  const hasCachedAvailability = readCachedAvailability();
+  const [checking, setChecking] = useState(!hasCachedAvailability);
+  const [available, setAvailable] = useState<boolean | null>(hasCachedAvailability ? true : null);
   const theme = useTheme();
 
   const check = async () => {
@@ -40,18 +68,23 @@ const ServerCheck: React.FC<PropsWithChildren<{}>> = ({ children }) => {
     try {
       await api.get('');
       setAvailable(true);
+      writeCachedAvailability();
     } catch (err: any) {
       if (!err || !err.response) setAvailable(false);
-      else setAvailable(true);
+      else {
+        setAvailable(true);
+        writeCachedAvailability();
+      }
     } finally {
       setChecking(false);
     }
   };
 
   useEffect(() => {
+    if (hasCachedAvailability) return;
     check();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hasCachedAvailability]);
 
   if (checking) {
     return (

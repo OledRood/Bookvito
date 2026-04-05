@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -29,10 +30,16 @@ import useBook from '../src/hooks/useBook';
 import useRequestBook from '../src/hooks/useRequestBook';
 import moderService from '../src/services/moderService';
 import ButtonSpinner from '../src/components/ButtonSpinner';
+import { buildBookPath, extractBookId, normalizePathname } from '../src/routing/paths';
+import { buildAbsoluteUrl, buildCanonicalUrl } from '../src/seo/shared';
+import { getConfiguredSiteUrl } from './seo/runtime';
 
 const BookDetailPage: React.FC = () => {
-  const { bookId } = useParams<{ bookId: string }>();
+  const { bookIdSlug } = useParams<{ bookIdSlug: string }>();
+  const bookId = extractBookId(bookIdSlug);
   const navigate = useNavigate();
+  const location = useLocation();
+  const siteUrl = getConfiguredSiteUrl();
   const { showNotification } = useNotification();
   const { isAuthenticated } = useAuth();
   const { book, loading, refresh } = useBook(bookId || undefined);
@@ -45,6 +52,15 @@ const BookDetailPage: React.FC = () => {
   const titleRef = React.useRef<HTMLDivElement | null>(null);
   const blocksRef = React.useRef<HTMLDivElement | null>(null);
   const [heroMaxHeight, setHeroMaxHeight] = React.useState<number | undefined>(undefined);
+
+  React.useEffect(() => {
+    if (!book?.id || !book.title) return;
+
+    const canonicalPath = buildBookPath(book.id, book.title);
+    if (normalizePathname(location.pathname) !== canonicalPath) {
+      navigate(canonicalPath, { replace: true });
+    }
+  }, [book?.id, book?.title, location.pathname, navigate]);
 
   const handleReport = async () => {
     if (!reportReason.trim()) return;
@@ -113,6 +129,27 @@ const BookDetailPage: React.FC = () => {
   };
 
   const cond = book.condition ? (conditionMap[book.condition] || { label: book.condition, key: book.condition, color: 'warning' as const }) : null;
+  const canonicalPath = buildBookPath(book.id, book.title);
+  const canonicalUrl = buildCanonicalUrl(siteUrl, canonicalPath);
+  const uiImageUrl = resolveImageUrl(book.imageUrl || '/images/default-book.png');
+  const socialImageUrl = /^https?:\/\//i.test(book.imageUrl || '')
+    ? String(book.imageUrl)
+    : buildAbsoluteUrl(siteUrl, book.imageUrl || '/images/default-book.png');
+  const seoTitle = `${book.title} — ${book.author} | Bookvito`;
+  const seoDescription = (book.description || `Книга "${book.title}" автора ${book.author} в каталоге Bookvito.`).trim();
+  const bookJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Book',
+    name: book.title,
+    author: {
+      '@type': 'Person',
+      name: book.author,
+    },
+    description: seoDescription,
+    url: canonicalUrl,
+    inLanguage: 'ru-RU',
+    ...(socialImageUrl ? { image: [socialImageUrl] } : {}),
+  };
 
   // We avoid dynamic DOM measurements (they caused hook/effect instability).
   // Instead use CSS-based constraints for the hero height (see below).
@@ -139,6 +176,33 @@ const BookDetailPage: React.FC = () => {
 
       return (
         <Box>
+          <Helmet prioritizeSeoTags>
+            <title>{seoTitle}</title>
+            <meta name="description" content={seoDescription} />
+            <meta name="robots" content="index,follow" />
+            <link rel="canonical" href={canonicalUrl} />
+
+            <meta property="og:type" content="book" />
+            <meta property="og:site_name" content="Bookvito" />
+            <meta property="og:locale" content="ru_RU" />
+            <meta property="og:title" content={seoTitle} />
+            <meta property="og:description" content={seoDescription} />
+            <meta property="og:url" content={canonicalUrl} />
+            <meta property="og:image" content={socialImageUrl} />
+            <meta property="og:image:secure_url" content={socialImageUrl} />
+            <meta property="og:image:alt" content={book.title} />
+
+            <meta name="twitter:card" content="summary_large_image" />
+            <meta name="twitter:title" content={seoTitle} />
+            <meta name="twitter:description" content={seoDescription} />
+            <meta name="twitter:image" content={socialImageUrl} />
+            <meta name="twitter:image:alt" content={book.title} />
+
+            <script type="application/ld+json">
+              {JSON.stringify(bookJsonLd)}
+            </script>
+          </Helmet>
+
           {isMdUp ? (
             // Desktop/tablet layout: image left, blocks right
             <Container maxWidth="lg" sx={{ mt: 4, mb: 6 }}>
@@ -146,7 +210,7 @@ const BookDetailPage: React.FC = () => {
                 <Box sx={{ width: '40%', borderRadius: 2, overflow: 'hidden' }}>
                   <Box
                     component="img"
-                    src={resolveImageUrl(book.imageUrl)}
+                    src={uiImageUrl}
                     alt={book.title}
                     sx={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
                   />
@@ -234,7 +298,7 @@ const BookDetailPage: React.FC = () => {
                   overflow: 'hidden',
                   // Apply a gradient that is transparent at the top and strongly darkens toward the bottom
                   // so the text on the image is highly legible on mobile.
-                  backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0) 55%, rgba(0,0,0,0.8) 100%), url(${resolveImageUrl(book.imageUrl)})`,
+                  backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0) 55%, rgba(0,0,0,0.8) 100%), url(${uiImageUrl})`,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                   display: 'flex',

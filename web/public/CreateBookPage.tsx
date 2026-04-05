@@ -22,9 +22,11 @@ import * as yup from 'yup';
 import { useNavigate } from 'react-router-dom';
 import { useNotification } from '../contexts/NotificationContext';
 import useCreateBook from '../src/hooks/useCreateBook';
+import useAutoFillBook from '../src/hooks/useAutoFillBook';
 import useLocationsList from '../src/hooks/useLocationsList';
 import api from '../src/services/api';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
 interface CreateBookFormInputs {
   title: string;
@@ -58,6 +60,7 @@ const CreateBookPage: React.FC = () => {
   const { showNotification } = useNotification();
   const { createBook, loading } = useCreateBook();
   const { locations, loading: loadingLocations } = useLocationsList();
+  const { autoFill, loading: autoFillLoading } = useAutoFillBook();
 
   const {
     control,
@@ -65,6 +68,7 @@ const CreateBookPage: React.FC = () => {
     handleSubmit,
     formState: { errors, isSubmitted },
     setValue,
+    watch,
   } = useForm<any>({
     resolver: yupResolver(schema),
     defaultValues: {
@@ -75,6 +79,9 @@ const CreateBookPage: React.FC = () => {
 
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const watchedTitle = watch('title') || '';
+  const watchedAuthor = watch('author') || '';
+  const watchedDescription = watch('description') || '';
 
   useEffect(() => {
     if (file) {
@@ -152,6 +159,24 @@ const CreateBookPage: React.FC = () => {
       navigate('/books');
     } catch (error) {
       // createBook already shows notification
+    }
+  };
+
+  const handleAutoFill = async () => {
+    const title = watchedTitle.trim();
+    if (!title) {
+      showNotification('Введите название или ISBN для автозаполнения', 'warning');
+      return;
+    }
+    try {
+      const meta = await autoFill(title);
+      if (!meta) return;
+      if (meta.title) setValue('title', meta.title, { shouldValidate: true, shouldDirty: true });
+      if (meta.author) setValue('author', meta.author, { shouldValidate: true, shouldDirty: true });
+      if (meta.description) setValue('description', meta.description, { shouldValidate: false, shouldDirty: true });
+      showNotification('Данные подставлены из Google Books', 'success');
+    } catch (e) {
+      // уведомление уже показано в hook
     }
   };
 
@@ -246,21 +271,44 @@ const CreateBookPage: React.FC = () => {
             </Box>
 
             <Box sx={{ width: { xs: '100%', md: '50%' } }}>
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                label="Название книги"
-                {...register('title')}
-                error={!!errors.title}
-                helperText={String(errors.title?.message || '')}
-              />
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: { xs: 'wrap', sm: 'nowrap' }, mt: 2, mb: 1 }}>
+                <TextField
+                  required
+                  fullWidth
+                  label="Название книги"
+                  InputLabelProps={{ shrink: Boolean(watchedTitle) }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' || autoFillLoading) return;
+                    event.preventDefault();
+                    handleAutoFill();
+                  }}
+                  {...register('title')}
+                  error={!!errors.title}
+                  helperText={String(errors.title?.message || '')}
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={<AutoAwesomeIcon />}
+                  onClick={handleAutoFill}
+                  disabled={autoFillLoading}
+                  sx={{
+                    whiteSpace: 'nowrap',
+                    height: 56,
+                    minWidth: { xs: '100%', sm: 190 },
+                    px: 2.5,
+                    flexShrink: 0,
+                  }}
+                >
+                  {autoFillLoading ? <CircularProgress size={20} /> : 'Автозаполнение'}
+                </Button>
+              </Box>
 
               <TextField
                 margin="normal"
                 required
                 fullWidth
                 label="Автор(ы)"
+                InputLabelProps={{ shrink: Boolean(watchedAuthor) }}
                 {...register('author')}
                 error={!!errors.author}
                 helperText={String(errors.author?.message || '')}
@@ -272,6 +320,7 @@ const CreateBookPage: React.FC = () => {
                 label="Описание"
                 multiline
                 rows={4}
+                InputLabelProps={{ shrink: Boolean(watchedDescription) }}
                 {...register('description')}
                 error={!!errors.description}
                 helperText={String(errors.description?.message || '')}

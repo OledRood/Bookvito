@@ -54,6 +54,7 @@ func NewRouter(
 			// when the client sends a valid token we can exclude user's own/returned books.
 			books.GET("/summary", OptionalAuthMiddleware(cfg.JWTSecret), bookHandler.GetSummaryList)
 			books.GET("/list", OptionalAuthMiddleware(cfg.JWTSecret), bookHandler.GetList)
+			books.GET("/auto-fill", bookHandler.AutoFillBook)
 			books.GET("/:id", bookHandler.GetByID)
 
 			// Защищенные маршруты (требуют токен)

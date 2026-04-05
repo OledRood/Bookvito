@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card, CardActionArea, CardContent, CardMedia, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import resolveImageUrl from '../src/utils/imageUrl';
+import { buildBookPath } from '../src/routing/paths';
 
 interface BookCardProps {
   id: string | number;
@@ -29,14 +30,15 @@ const BookCard: React.FC<BookCardProps> = ({ id, imageUrl, title, author }) => {
     >
       <CardActionArea
         component={RouterLink}
-        to={`/book/${id}`}
+        to={buildBookPath(id, title)}
         sx={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'flex-start', alignItems: 'flex-start' }}
       >
         <CardMedia
           component="img"
+          loading="lazy"
+          decoding="async"
           sx={{
-            // slightly taller image on very small screens but keep reasonable content size
-            height: { xs: 210, sm: 190 },
+            height: { xs: 176, sm: 184, md: 192 },
             objectFit: 'cover',
             borderTopLeftRadius: 'var(--radii-medium, 12px)',
             borderTopRightRadius: 'var(--radii-medium, 12px)',
@@ -53,20 +55,19 @@ const BookCard: React.FC<BookCardProps> = ({ id, imageUrl, title, author }) => {
             }
           }}
         />
-        <CardContent sx={{ flexGrow: 1, textAlign: 'left', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', mt: { xs: '20px', md: 0 } }}>
+        <CardContent sx={{ flexGrow: 1, textAlign: 'left', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', p: 1.5 }}>
           <Typography
             gutterBottom
             variant="h6"
             component="div"
             sx={{
-              // Ограничение названия двумя строками
               display: '-webkit-box',
               WebkitLineClamp: 2,
               WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              minHeight: { xs: '2.2em', md: '3.2em' }, // smaller on mobile to avoid large blocks
-              fontSize: { xs: '1rem', md: 'unset' },
+              minHeight: { xs: '2.5em', md: '2.8em' },
+              fontSize: { xs: '0.95rem', md: '1rem' },
               width: '100%',
               textAlign: 'left',
               fontWeight: 600,

@@ -1,11 +1,29 @@
 import axios from 'axios';
 
+const FALLBACK_API_BASE_URL = 'https://bookvito.ru/api/v1/';
+const LOCAL_API_BASE_URL = 'http://localhost:8080/api/v1/';
+
+const resolveBaseUrl = () => {
+  const meta = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : undefined;
+  if (meta?.VITE_API_BASE_URL) {
+    return meta.VITE_API_BASE_URL;
+  }
+
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return LOCAL_API_BASE_URL;
+    }
+
+    return `${window.location.origin.replace(/\/$/, '')}/api/v1/`;
+  }
+
+  return FALLBACK_API_BASE_URL;
+};
+
 // plain axios instance used by services
 // Read base URL from Vite env (VITE_API_BASE_URL) when available, otherwise
-// fall back to localhost:8080 which is the backend default in this project.
-const BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL)
-  ? import.meta.env.VITE_API_BASE_URL
-  : 'http://localhost:8080/api/v1/';
+// fall back to same-origin /api/v1/ and finally to the production domain.
+const BASE_URL = resolveBaseUrl();
 
 const api = axios.create({
   baseURL: BASE_URL,
