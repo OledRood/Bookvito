@@ -98,6 +98,33 @@ type BookSummary struct {
 	Author   string    `json:"author" db:"author"`
 }
 
+type BookListFilter struct {
+	Search        string      `json:"search"`
+	Status        *BookStatus `json:"status,omitempty"`
+	LocationID    *uuid.UUID  `json:"location_id,omitempty"`
+	SortBy        string      `json:"sort_by"`
+	Order         string      `json:"order"`
+	Limit         int         `json:"limit"`
+	Offset        int         `json:"offset"`
+	ExcludeUserID *uuid.UUID  `json:"-"`
+	OnlyAvailable bool        `json:"-"`
+}
+
+type BookListResponse struct {
+	Items   []*Book `json:"items"`
+	HasMore bool    `json:"has_more"`
+}
+
+type BookUpdateInput struct {
+	Title                *string
+	Author               *string
+	Description          *string
+	Condition            *BookCondition
+	ImageURL             *string
+	CurrentLocationID    *uuid.UUID
+	CurrentLocationIDSet bool
+}
+
 // Exchange represents a book reservation/borrowing (Бронирование)
 type Exchange struct {
 	ID         uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`

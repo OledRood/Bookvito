@@ -53,6 +53,72 @@ func (r *bookRepository) List(limit, offset int) ([]*domain.Book, error) {
 	return books, err
 }
 
+func (r *bookRepository) ListFiltered(filter domain.BookListFilter) (*domain.BookListResponse, error) {
+	var books []*domain.Book
+
+	sortColumns := map[string]string{
+		"title":               "title",
+		"author":              "author",
+		"status":              "status",
+		"created_at":          "created_at",
+		"updated_at":          "updated_at",
+		"current_location_id": "current_location_id",
+	}
+
+	sortColumn, ok := sortColumns[filter.SortBy]
+	if !ok {
+		sortColumn = "created_at"
+	}
+
+	order := "desc"
+	if filter.Order == "asc" {
+		order = "asc"
+	}
+
+	query := r.db.Preload("CurrentLocation").Model(&domain.Book{})
+
+	if filter.Search != "" {
+		searchPattern := "%" + filter.Search + "%"
+		query = query.Where("title ILIKE ? OR author ILIKE ?", searchPattern, searchPattern)
+	}
+
+	if filter.Status != nil {
+		query = query.Where("status = ?", *filter.Status)
+	}
+
+	if filter.LocationID != nil {
+		query = query.Where("current_location_id = ?", *filter.LocationID)
+	}
+
+	if filter.ExcludeUserID != nil {
+		query = query.Where("owner_id != ?", *filter.ExcludeUserID)
+
+		sub := r.db.Model(&domain.Exchange{}).
+			Select("book_id").
+			Where("user_id = ? AND status = ?", *filter.ExcludeUserID, domain.ExchangeReturned)
+		query = query.Where("id NOT IN (?)", sub)
+	}
+
+	err := query.
+		Order(sortColumn + " " + order).
+		Limit(filter.Limit + 1).
+		Offset(filter.Offset).
+		Find(&books).Error
+	if err != nil {
+		return nil, err
+	}
+
+	hasMore := len(books) > filter.Limit
+	if hasMore {
+		books = books[:filter.Limit]
+	}
+
+	return &domain.BookListResponse{
+		Items:   books,
+		HasMore: hasMore,
+	}, nil
+}
+
 func (r *bookRepository) GetSummaryList(limit, offset int, excludeUserID *uuid.UUID) ([]*domain.BookSummary, error) {
 	var summaries []*domain.BookSummary
 
@@ -78,17 +144,6 @@ func (r *bookRepository) GetSummaryList(limit, offset int, excludeUserID *uuid.U
 		Offset(offset).
 		Find(&summaries).Error
 	return summaries, err
-}
-
-func (r *bookRepository) Search(query string, limit, offset int) ([]*domain.Book, error) {
-	var books []*domain.Book
-	searchPattern := "%" + query + "%"
-	err := r.db.Preload("CurrentLocation").
-		Where("title ILIKE ? OR author ILIKE ?", searchPattern, searchPattern).
-		Limit(limit).
-		Offset(offset).
-		Find(&books).Error
-	return books, err
 }
 
 func (r *bookRepository) GetByStatus(status domain.BookStatus, limit, offset int) ([]*domain.Book, error) {

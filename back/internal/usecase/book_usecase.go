@@ -4,26 +4,34 @@ import (
 	"bookvito/internal/domain"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type BookUseCase struct {
 	bookRepo            domain.BookRepository
 	movementHistoryRepo domain.BookMovementHistoryRepository
 	exchangeUseCaseRepo domain.ExchangeRepository
+	locationRepo        domain.LocationRepository
 }
 
-func NewBookUseCase(bookRepo domain.BookRepository, movementHistoryRepo domain.BookMovementHistoryRepository, exchangeUseCaseRepo domain.ExchangeRepository) *BookUseCase {
+func NewBookUseCase(bookRepo domain.BookRepository, movementHistoryRepo domain.BookMovementHistoryRepository, exchangeUseCaseRepo domain.ExchangeRepository, locationRepo domain.LocationRepository) *BookUseCase {
 	return &BookUseCase{
 		bookRepo:            bookRepo,
 		movementHistoryRepo: movementHistoryRepo,
 		exchangeUseCaseRepo: exchangeUseCaseRepo,
+		locationRepo:        locationRepo,
 	}
 }
 
 func (uc *BookUseCase) CreateBook(book *domain.Book) error {
+	if err := uc.validateBookForCreate(book); err != nil {
+		return err
+	}
 
 	if err := uc.bookRepo.Create(book); err != nil {
 		return err
@@ -48,12 +56,28 @@ func (uc *BookUseCase) CreateBook(book *domain.Book) error {
 }
 
 func (uc *BookUseCase) Request(bookID uuid.UUID, userID uuid.UUID, locationID *uuid.UUID) error {
-	book, err := uc.bookRepo.GetByID(bookID)
-	if err != nil {
+	if err := validateBookID(bookID); err != nil {
 		return err
 	}
+	if userID == uuid.Nil {
+		return domain.NewValidationError("Неверный идентификатор пользователя")
+	}
+	if err := uc.validateLocation(locationID); err != nil {
+		return err
+	}
+
+	book, err := uc.bookRepo.GetByID(bookID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NewNotFoundError("Книга не найдена")
+		}
+		return err
+	}
+	if book.OwnerID == userID {
+		return domain.NewForbiddenError("Нельзя забронировать собственную книгу")
+	}
 	if book.Status != domain.BookAvailable || book.Status == "" {
-		return fmt.Errorf("Книга недоступна для бронирования (статус=%s)", book.Status)
+		return domain.NewConflictError(fmt.Sprintf("Книга недоступна для бронирования (статус=%s)", book.Status))
 	}
 
 	book.Status = domain.BookRequested
@@ -96,12 +120,22 @@ func (uc *BookUseCase) Request(bookID uuid.UUID, userID uuid.UUID, locationID *u
 }
 
 func (uc *BookUseCase) Borrow(bookID uuid.UUID, userID uuid.UUID) error {
+	if err := validateBookID(bookID); err != nil {
+		return err
+	}
+	if userID == uuid.Nil {
+		return domain.NewValidationError("Неверный идентификатор пользователя")
+	}
+
 	book, err := uc.bookRepo.GetByID(bookID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NewNotFoundError("Книга не найдена")
+		}
 		return err
 	}
 	if book.Status != domain.BookRequested {
-		return errors.New("Книга недоступна для выдачи")
+		return domain.NewConflictError("Книга недоступна для выдачи")
 	}
 	exchanges, err := uc.exchangeUseCaseRepo.GetByBookID(bookID)
 	if err != nil {
@@ -117,7 +151,7 @@ func (uc *BookUseCase) Borrow(bookID uuid.UUID, userID uuid.UUID) error {
 		}
 	}
 	if !requesterFound {
-		return errors.New("Только пользователь, который забронировал книгу, может её взять")
+		return domain.NewForbiddenError("Только пользователь, который забронировал книгу, может её взять")
 	}
 
 	book.Status = domain.BookBorrowed
@@ -150,38 +184,86 @@ func (uc *BookUseCase) Borrow(bookID uuid.UUID, userID uuid.UUID) error {
 	return nil
 }
 
-func (uc *BookUseCase) Return(updatedBook *domain.Book, userID uuid.UUID) error {
-	if updatedBook.Title == "" {
-		return errors.New("Название книги не может быть пустым")
+func (uc *BookUseCase) Return(updatedBook *domain.Book, userID uuid.UUID, isAdmin bool) error {
+	if updatedBook == nil {
+		return domain.NewValidationError("Книга не передана")
 	}
-	if updatedBook.Author == "" {
-		return errors.New("Автор книги не может быть пустым")
+	if err := validateBookID(updatedBook.ID); err != nil {
+		return err
 	}
-	println("Returning book status:", updatedBook.Status)
+	if userID == uuid.Nil {
+		return domain.NewValidationError("Неверный идентификатор пользователя")
+	}
 
 	bookFromDB, err := uc.bookRepo.GetByID(updatedBook.ID)
 	if err != nil {
-		return errors.New("Книга не найдена в базе")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NewNotFoundError("Книга не найдена")
+		}
+		return err
 	}
 
 	if bookFromDB.Status != domain.BookBorrowed {
-		return errors.New("Только взятые книги могут быть возвращены")
+		return domain.NewConflictError("Только взятые книги могут быть возвращены")
+	}
+
+	exchanges, err := uc.exchangeUseCaseRepo.GetByBookID(bookFromDB.ID)
+	if err != nil {
+		return err
+	}
+
+	var borrowedExchange *domain.Exchange
+	for _, ex := range exchanges {
+		if ex == nil {
+			continue
+		}
+		if ex.Status == domain.ExchangeBorrowed {
+			borrowedExchange = ex
+			break
+		}
+	}
+
+	if borrowedExchange == nil {
+		return domain.NewConflictError("Для книги не найдено активное заимствование")
+	}
+
+	if !isAdmin && borrowedExchange.UserID != userID {
+		return domain.NewForbiddenError("Возвращать книгу может только текущий заёмщик или администратор")
+	}
+
+	title, err := validateTitle(updatedBook.Title)
+	if err != nil {
+		return err
+	}
+	author, err := validateAuthor(updatedBook.Author)
+	if err != nil {
+		return err
+	}
+	description, err := validateDescription(updatedBook.Description)
+	if err != nil {
+		return err
+	}
+	if err := validateCondition(updatedBook.Condition); err != nil {
+		return err
+	}
+	if err := uc.validateLocation(updatedBook.CurrentLocationID); err != nil {
+		return err
 	}
 
 	// Обновляем только нужные поля у объекта, который мы получили из БД
 	bookFromDB.Status = domain.BookAvailable
-	bookFromDB.Title = updatedBook.Title
-	bookFromDB.Author = updatedBook.Author
-	bookFromDB.Description = updatedBook.Description
-	// Preserve existing ImageURL if the incoming payload doesn't include one.
-	// Some clients don't send image_url when returning a book, and unconditional
-	// assignment would clear the stored image. Update only when a non-empty
-	// value is provided.
+	bookFromDB.Title = title
+	bookFromDB.Author = author
+	bookFromDB.Description = description
 	if updatedBook.ImageURL != "" {
-		bookFromDB.ImageURL = updatedBook.ImageURL
+		imageURL, err := validateImageURL(updatedBook.ImageURL)
+		if err != nil {
+			return err
+		}
+		bookFromDB.ImageURL = imageURL
 	}
 	bookFromDB.CurrentLocationID = updatedBook.CurrentLocationID
-	bookFromDB.Condition = updatedBook.Condition // Обновляем состояние из запроса
+	bookFromDB.Condition = updatedBook.Condition
 
 	if err := uc.bookRepo.Update(bookFromDB); err != nil {
 		return err
@@ -201,28 +283,23 @@ func (uc *BookUseCase) Return(updatedBook *domain.Book, userID uuid.UUID) error 
 	// Update any exchanges related to this book instead of deleting them.
 	// Deleting would break FK constraints because movement history rows may reference exchanges.
 	// For borrowed exchanges mark as returned and link the movement to that exchange.
-	if exchanges, err := uc.exchangeUseCaseRepo.GetByBookID(bookFromDB.ID); err == nil {
-		for _, ex := range exchanges {
-			if ex == nil {
-				continue
+	for _, ex := range exchanges {
+		if ex == nil {
+			continue
+		}
+		if ex.Status == domain.ExchangeBorrowed {
+			ex.Status = domain.ExchangeReturned
+			if uerr := uc.exchangeUseCaseRepo.Update(ex); uerr != nil {
+				return uerr
 			}
-			if ex.Status == domain.ExchangeBorrowed {
-				ex.Status = domain.ExchangeReturned
-				if uerr := uc.exchangeUseCaseRepo.Update(ex); uerr != nil {
-					return uerr
-				}
-				// link the return movement to the exchange
-				movement.ExchangeID = &ex.ID
-				// best-effort update; if it fails we still continue but return the error
-				if merr := uc.movementHistoryRepo.Update(movement); merr != nil {
-					return merr
-				}
-			} else {
-				// For other statuses (e.g. requested), mark as cancelled to preserve history
-				ex.Status = domain.ExchangeCancelled
-				if uerr := uc.exchangeUseCaseRepo.Update(ex); uerr != nil {
-					return uerr
-				}
+			movement.ExchangeID = &ex.ID
+			if merr := uc.movementHistoryRepo.Update(movement); merr != nil {
+				return merr
+			}
+		} else {
+			ex.Status = domain.ExchangeCancelled
+			if uerr := uc.exchangeUseCaseRepo.Update(ex); uerr != nil {
+				return uerr
 			}
 		}
 	}
@@ -231,10 +308,20 @@ func (uc *BookUseCase) Return(updatedBook *domain.Book, userID uuid.UUID) error 
 }
 
 func (uc *BookUseCase) DeleteBook(bookID, userID uuid.UUID, isAdmin bool, reason string) error {
+	if err := validateBookID(bookID); err != nil {
+		return err
+	}
+	if userID == uuid.Nil {
+		return domain.NewValidationError("Неверный идентификатор пользователя")
+	}
+
 	book, err := uc.bookRepo.GetByID(bookID)
 
 	if err != nil {
-		return errors.New("Книга не найдена")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NewNotFoundError("Книга не найдена")
+		}
+		return err
 	}
 
 	// Authorization: admin can delete any book. Non-admin can delete only if they
@@ -256,7 +343,7 @@ func (uc *BookUseCase) DeleteBook(bookID, userID uuid.UUID, isAdmin bool, reason
 			}
 		}
 		if !borrowerFound {
-			return errors.New("Доступ запрещён: удалять может только администратор или пользователь, у которого книга на полке")
+			return domain.NewForbiddenError("Доступ запрещён: удалять может только администратор или пользователь, у которого книга на полке")
 		}
 	}
 
@@ -301,75 +388,190 @@ func (uc *BookUseCase) GetSummaryBooksList(userID *uuid.UUID) ([]*domain.BookSum
 	return uc.bookRepo.GetSummaryList(100, 0, userID)
 }
 
-func (uc *BookUseCase) GetBooksList() ([]*domain.Book, error) {
-	return uc.bookRepo.List(100, 0)
-
-}
-
-// SearchBooks performs a text search using repository.Search and then applies
-// the same visibility filtering as GetSummaryBooksList: only available books,
-// exclude books owned by the requesting user and exclude books the user has
-// returned before. Returns BookSummary objects for the UI.
-func (uc *BookUseCase) SearchBooks(query string, limit, offset int, userID *uuid.UUID) ([]*domain.BookSummary, error) {
-	if limit == 0 {
-		limit = 100
+func (uc *BookUseCase) GetBooksList(filter domain.BookListFilter) (*domain.BookListResponse, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 20
+	}
+	if filter.Limit > 100 {
+		filter.Limit = 100
+	}
+	if filter.Offset < 0 {
+		filter.Offset = 0
+	}
+	if filter.SortBy == "" {
+		filter.SortBy = "created_at"
+	}
+	if filter.Order == "" {
+		filter.Order = "desc"
+	}
+	if filter.OnlyAvailable {
+		status := domain.BookAvailable
+		filter.Status = &status
 	}
 
-	books, err := uc.bookRepo.Search(query, limit, offset)
+	return uc.bookRepo.ListFiltered(filter)
+}
+
+func (uc *BookUseCase) UpdateBook(bookID uuid.UUID, userID uuid.UUID, isAdmin bool, input domain.BookUpdateInput) (*domain.Book, error) {
+	if err := validateBookID(bookID); err != nil {
+		return nil, err
+	}
+	if userID == uuid.Nil {
+		return nil, domain.NewValidationError("Неверный идентификатор пользователя")
+	}
+
+	book, err := uc.bookRepo.GetByID(bookID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.NewNotFoundError("Книга не найдена")
+		}
 		return nil, err
 	}
 
-	// Build set of returned book IDs for user (if any)
-	returned := map[uuid.UUID]struct{}{}
-	if userID != nil {
-		exchanges, err := uc.exchangeUseCaseRepo.GetByUserID(*userID)
-		if err == nil {
-			for _, ex := range exchanges {
-				if ex == nil {
-					continue
-				}
-				if ex.Status == domain.ExchangeReturned {
-					returned[ex.BookID] = struct{}{}
-				}
-			}
+	allowed, err := uc.canManageBookMetadata(book, userID, isAdmin)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, domain.NewForbiddenError("Доступ запрещён: редактировать книгу может только владелец, текущий заёмщик или администратор")
+	}
+
+	if book.Status == domain.BookDeleted {
+		return nil, domain.NewConflictError("Нельзя редактировать удалённую книгу")
+	}
+
+	if input.Title != nil {
+		title, err := validateTitle(*input.Title)
+		if err != nil {
+			return nil, err
+		}
+		book.Title = title
+	}
+
+	if input.Author != nil {
+		author, err := validateAuthor(*input.Author)
+		if err != nil {
+			return nil, err
+		}
+		book.Author = author
+	}
+
+	if input.Description != nil {
+		description, err := validateDescription(*input.Description)
+		if err != nil {
+			return nil, err
+		}
+		book.Description = description
+	}
+
+	if input.Condition != nil {
+		if err := validateCondition(*input.Condition); err != nil {
+			return nil, err
+		}
+		book.Condition = *input.Condition
+	}
+
+	if input.ImageURL != nil {
+		imageURL, err := validateImageURL(*input.ImageURL)
+		if err != nil {
+			return nil, err
+		}
+		book.ImageURL = imageURL
+	}
+
+	previousLocationID := book.CurrentLocationID
+	if input.CurrentLocationIDSet {
+		if err := uc.validateLocation(input.CurrentLocationID); err != nil {
+			return nil, err
+		}
+		book.CurrentLocationID = input.CurrentLocationID
+	}
+
+	if err := uc.bookRepo.Update(book); err != nil {
+		return nil, err
+	}
+
+	if input.CurrentLocationIDSet && !sameUUIDPtr(previousLocationID, book.CurrentLocationID) {
+		movement := &domain.BookMovementHistory{
+			BookID:         book.ID,
+			FromLocationID: previousLocationID,
+			ToLocationID:   book.CurrentLocationID,
+			UserID:         &userID,
+			Action:         "moved",
+			Notes:          "Book location updated",
+			PreviousStatus: book.Status,
+			NewStatus:      book.Status,
+		}
+		if err := uc.movementHistoryRepo.Create(movement); err != nil {
+			return nil, err
 		}
 	}
 
-	var out []*domain.BookSummary
-	for _, b := range books {
-		if b == nil {
-			continue
-		}
-		// Follow summary visibility rules: only available books
-		if b.Status != domain.BookAvailable {
-			continue
-		}
-		// exclude owner's own books when user is provided
-		if userID != nil && b.OwnerID == *userID {
-			continue
-		}
-		// exclude returned books for user
-		if _, ok := returned[b.ID]; ok {
-			continue
-		}
-
-		out = append(out, &domain.BookSummary{
-			ID:       b.ID,
-			ImageURL: b.ImageURL,
-			Title:    b.Title,
-			Author:   b.Author,
-		})
-	}
-
-	return out, nil
+	return book, nil
 }
 
 func (uc *BookUseCase) GetBookByID(bookID uuid.UUID) (*domain.Book, error) {
-	return uc.bookRepo.GetByID(bookID)
+	if err := validateBookID(bookID); err != nil {
+		return nil, err
+	}
+	book, err := uc.bookRepo.GetByID(bookID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.NewNotFoundError("Книга не найдена")
+		}
+		return nil, err
+	}
+	return book, nil
+}
+
+func (uc *BookUseCase) canManageBookMetadata(book *domain.Book, userID uuid.UUID, isAdmin bool) (bool, error) {
+	if book == nil {
+		return false, domain.NewValidationError("Книга не передана")
+	}
+	if isAdmin || book.OwnerID == userID {
+		return true, nil
+	}
+	if book.Status != domain.BookBorrowed {
+		return false, nil
+	}
+
+	exchanges, err := uc.exchangeUseCaseRepo.GetByBookID(book.ID)
+	if err != nil {
+		return false, err
+	}
+	for _, ex := range exchanges {
+		if ex == nil {
+			continue
+		}
+		if ex.Status == domain.ExchangeBorrowed && ex.UserID == userID {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func sameUUIDPtr(a, b *uuid.UUID) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }
 
 func (uc *BookUseCase) GetBookMovementHistory(bookID uuid.UUID) ([]*domain.BookMovementHistory, error) {
+	if err := validateBookID(bookID); err != nil {
+		return nil, err
+	}
+	_, err := uc.bookRepo.GetByID(bookID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.NewNotFoundError("Книга не найдена")
+		}
+		return nil, err
+	}
 	return uc.movementHistoryRepo.GetByBookID(bookID)
 }
 
@@ -416,10 +618,22 @@ func (uc *BookUseCase) GetExchangesFromUserByStatus(userID uuid.UUID, status dom
 }
 
 // GetBookStats returns aggregated statistics for a single book
-func (uc *BookUseCase) GetBookStats(bookID uuid.UUID) (*domain.MyBooksStats, error) {
+func (uc *BookUseCase) GetBookStats(bookID uuid.UUID, userID uuid.UUID, isAdmin bool) (*domain.MyBooksStats, error) {
+	if err := validateBookID(bookID); err != nil {
+		return nil, err
+	}
+	if userID == uuid.Nil {
+		return nil, domain.NewValidationError("Неверный идентификатор пользователя")
+	}
 	book, err := uc.bookRepo.GetByID(bookID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.NewNotFoundError("Книга не найдена")
+		}
 		return nil, err
+	}
+	if !isAdmin && book.OwnerID != userID {
+		return nil, domain.NewForbiddenError("Доступ запрещён: статистика доступна только владельцу книги или администратору")
 	}
 
 	stats := &domain.MyBooksStats{
@@ -494,15 +708,85 @@ func (uc *BookUseCase) GetBookStats(bookID uuid.UUID) (*domain.MyBooksStats, err
 }
 
 // SetBookImage sets the ImageURL for a given book.
-func (uc *BookUseCase) SetBookImage(bookID uuid.UUID, imageURL string) error {
-	book, err := uc.bookRepo.GetByID(bookID)
+func (uc *BookUseCase) SetBookImage(bookID uuid.UUID, userID uuid.UUID, isAdmin bool, imageURL string) error {
+	if err := validateBookID(bookID); err != nil {
+		return err
+	}
+	if userID == uuid.Nil {
+		return domain.NewValidationError("Неверный идентификатор пользователя")
+	}
+	validatedImageURL, err := validateImageURL(imageURL)
 	if err != nil {
 		return err
 	}
-	book.ImageURL = imageURL
+
+	book, err := uc.bookRepo.GetByID(bookID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NewNotFoundError("Книга не найдена")
+		}
+		return err
+	}
+	allowed, err := uc.canManageBookMetadata(book, userID, isAdmin)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return domain.NewForbiddenError("Доступ запрещён: изменять изображение книги может только владелец, текущий заёмщик или администратор")
+	}
+	if strings.TrimSpace(book.ImageURL) != "" && book.ImageURL != validatedImageURL {
+		if oldImagePath, pathErr := imagePathFromURL(book.ImageURL); pathErr == nil {
+			if removeErr := os.Remove(oldImagePath); removeErr != nil && !os.IsNotExist(removeErr) {
+				return removeErr
+			}
+		}
+	}
+	book.ImageURL = validatedImageURL
 	if err := uc.bookRepo.Update(book); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (uc *BookUseCase) DeleteBookImage(bookID uuid.UUID, userID uuid.UUID, isAdmin bool) error {
+	if err := validateBookID(bookID); err != nil {
+		return err
+	}
+	if userID == uuid.Nil {
+		return domain.NewValidationError("Неверный идентификатор пользователя")
+	}
+
+	book, err := uc.bookRepo.GetByID(bookID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NewNotFoundError("Книга не найдена")
+		}
+		return err
+	}
+	allowed, err := uc.canManageBookMetadata(book, userID, isAdmin)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return domain.NewForbiddenError("Доступ запрещён: удалять изображение книги может только владелец, текущий заёмщик или администратор")
+	}
+	if strings.TrimSpace(book.ImageURL) == "" {
+		return domain.NewValidationError("У книги нет изображения")
+	}
+
+	imagePath, err := imagePathFromURL(book.ImageURL)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(imagePath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	book.ImageURL = ""
+	if err := uc.bookRepo.Update(book); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -590,6 +874,13 @@ func (uc *BookUseCase) GetMyBooksStats(ownerID uuid.UUID) (*domain.MyBooksStats,
 
 // ExtendReservation attempts to extend an active reservation by 24 hours with constraints
 func (uc *BookUseCase) ExtendReservation(bookID uuid.UUID, userID uuid.UUID) error {
+	if err := validateBookID(bookID); err != nil {
+		return err
+	}
+	if userID == uuid.Nil {
+		return domain.NewValidationError("Неверный идентификатор пользователя")
+	}
+
 	exchanges, err := uc.exchangeUseCaseRepo.GetByBookID(bookID)
 	if err != nil {
 		return err
@@ -605,19 +896,19 @@ func (uc *BookUseCase) ExtendReservation(bookID uuid.UUID, userID uuid.UUID) err
 		}
 	}
 	if target == nil {
-		return errors.New("no active reservation found for this user and book")
+		return domain.NewNotFoundError("Активное бронирование не найдено")
 	}
 	if target.ExpiresAt == nil {
-		return errors.New("reservation has no expiry set")
+		return domain.NewConflictError("У бронирования не задан срок действия")
 	}
 	if time.Now().After(*target.ExpiresAt) {
-		return errors.New("reservation already expired")
+		return domain.NewConflictError("Срок бронирования уже истёк")
 	}
 
 	// Constraint: total reservation period cannot exceed 7 days
 	maxDuration := 7 * 24 * time.Hour
 	if target.ExpiresAt.Sub(target.BookedAt) >= maxDuration {
-		return errors.New("maximum reservation duration exceeded; cannot extend")
+		return domain.NewConflictError("Нельзя продлить бронирование сверх максимального срока")
 	}
 
 	// extend by 24 hours
@@ -636,6 +927,13 @@ func (uc *BookUseCase) ExtendReservation(bookID uuid.UUID, userID uuid.UUID) err
 
 // CancelReservation cancels an active reservation and sets book status back to available
 func (uc *BookUseCase) CancelReservation(bookID uuid.UUID, userID uuid.UUID) error {
+	if err := validateBookID(bookID); err != nil {
+		return err
+	}
+	if userID == uuid.Nil {
+		return domain.NewValidationError("Неверный идентификатор пользователя")
+	}
+
 	exchanges, err := uc.exchangeUseCaseRepo.GetByBookID(bookID)
 	if err != nil {
 		return err
@@ -651,7 +949,7 @@ func (uc *BookUseCase) CancelReservation(bookID uuid.UUID, userID uuid.UUID) err
 		}
 	}
 	if target == nil {
-		return errors.New("no active reservation found for this user and book")
+		return domain.NewNotFoundError("Активное бронирование не найдено")
 	}
 
 	// mark exchange cancelled
@@ -663,6 +961,9 @@ func (uc *BookUseCase) CancelReservation(bookID uuid.UUID, userID uuid.UUID) err
 	// set book status back to available
 	book, err := uc.bookRepo.GetByID(bookID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NewNotFoundError("Книга не найдена")
+		}
 		return err
 	}
 	previousStatus := book.Status

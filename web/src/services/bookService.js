@@ -51,6 +51,45 @@ export const borrowBook = async (bookId) => {
   return resp.data;
 };
 
+export const updateBook = async (bookId, payload) => {
+  const resp = await api.put(`books/${bookId}`, payload);
+  return resp.data;
+};
+
+export const returnBook = async (payload) => {
+  const body = {
+    book_id: payload.bookId,
+    title: payload.title,
+    author: payload.author,
+  };
+  if (payload.condition) body.condition = payload.condition;
+  if (payload.description !== undefined) body.description = payload.description;
+  if (payload.currentLocationId !== undefined) body.current_location_id = payload.currentLocationId || null;
+  if (payload.imageUrl !== undefined) body.image_url = payload.imageUrl;
+
+  const resp = await api.put('books/return', body);
+  return resp.data;
+};
+
+export const uploadBookImage = async (file) => {
+  const form = new FormData();
+  form.append('image', file);
+  const resp = await api.post('books/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return resp.data || {};
+};
+
+export const setBookImage = async (bookId, imageUrl) => {
+  const resp = await api.put(`books/image/${bookId}`, { image_url: imageUrl });
+  return resp.data;
+};
+
+export const deleteBookImage = async (bookId) => {
+  const resp = await api.delete(`books/image/${bookId}`);
+  return resp.data;
+};
+
 export default {
   getMyBooks,
   getReservedBooks,
@@ -62,4 +101,9 @@ export default {
   getBookStats,
   getBook,
   borrowBook,
+  updateBook,
+  returnBook,
+  uploadBookImage,
+  setBookImage,
+  deleteBookImage,
 };

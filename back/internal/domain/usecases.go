@@ -36,12 +36,9 @@ type BookUseCase interface {
 	// GetSummaryBooksList returns public summaries. If userID is non-nil,
 	// summaries for books owned by or interacted with by that user will be excluded.
 	GetSummaryBooksList(userID *uuid.UUID) ([]*BookSummary, error)
-	GetBooksList() ([]*Book, error)
+	GetBooksList(filter BookListFilter) (*BookListResponse, error)
+	UpdateBook(bookID uuid.UUID, userID uuid.UUID, isAdmin bool, input BookUpdateInput) (*Book, error)
 	GetBookByID(bookID uuid.UUID) (*Book, error)
-	// SearchBooks performs a text search over books. If userID is non-nil,
-	// search results should follow the same visibility rules as GetSummaryBooksList
-	// (exclude user's own books and books the user has returned).
-	SearchBooks(query string, limit, offset int, userID *uuid.UUID) ([]*BookSummary, error)
 	// DeleteBook deletes (marks deleted) a book. If isAdmin is true the caller is allowed
 	// to delete any book. Otherwise the caller must be the user who currently has the
 	// book on their shelf (i.e. borrowed by them).
@@ -51,9 +48,10 @@ type BookUseCase interface {
 	// book's current location.
 	Request(bookID uuid.UUID, userID uuid.UUID, locationID *uuid.UUID) error
 	Borrow(bookID uuid.UUID, userID uuid.UUID) error
-	Return(updatedBook *Book, userID uuid.UUID) error
+	Return(updatedBook *Book, userID uuid.UUID, isAdmin bool) error
 	// SetBookImage allows setting or updating the public image URL for a book
-	SetBookImage(bookID uuid.UUID, imageURL string) error
+	SetBookImage(bookID uuid.UUID, userID uuid.UUID, isAdmin bool, imageURL string) error
+	DeleteBookImage(bookID uuid.UUID, userID uuid.UUID, isAdmin bool) error
 
 	// GetBookByID(id uuid.UUID) (*Book, error)
 	// UpdateBook(book *Book) error
@@ -81,7 +79,7 @@ type BookUseCase interface {
 	CancelReservation(bookID uuid.UUID, userID uuid.UUID) error
 
 	// Get statistics for a single book (by book ID)
-	GetBookStats(bookID uuid.UUID) (*MyBooksStats, error)
+	GetBookStats(bookID uuid.UUID, userID uuid.UUID, isAdmin bool) (*MyBooksStats, error)
 }
 
 // MyBooksStats represents aggregated statistics for a user's books

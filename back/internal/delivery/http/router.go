@@ -53,9 +53,7 @@ func NewRouter(
 			// Summary is a public endpoint but we want to apply optional auth so that
 			// when the client sends a valid token we can exclude user's own/returned books.
 			books.GET("/summary", OptionalAuthMiddleware(cfg.JWTSecret), bookHandler.GetSummaryList)
-			// Search is public but applies same visibility rules when optional auth is present
-			books.GET("/search", OptionalAuthMiddleware(cfg.JWTSecret), bookHandler.Search)
-			books.GET("/list", bookHandler.GetList)
+			books.GET("/list", OptionalAuthMiddleware(cfg.JWTSecret), bookHandler.GetList)
 			books.GET("/:id", bookHandler.GetByID)
 
 			// Защищенные маршруты (требуют токен)
@@ -65,6 +63,8 @@ func NewRouter(
 			authed.POST("/upload", bookHandler.UploadImage)
 			// Attach existing uploaded image to a book: PUT /api/v1/books/image/:id
 			authed.PUT("/image/:id", bookHandler.SetImage)
+			authed.DELETE("/image/:id", bookHandler.DeleteImage)
+			authed.PUT("/:id", bookHandler.Update)
 			authed.POST("/create", bookHandler.Create)
 			authed.POST("/request", bookHandler.Request)
 			// User-specific lists

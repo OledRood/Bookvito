@@ -43,7 +43,7 @@ func main() {
 
 	// Initialize use cases
 	userUseCase := usecase.NewUserUseCase(userRepo, movementRepo, cfg.JWTSecret)
-	bookUseCase := usecase.NewBookUseCase(bookRepo, movementRepo, exchangeRepo)
+	bookUseCase := usecase.NewBookUseCase(bookRepo, movementRepo, exchangeRepo, locationRepo)
 	exchangeUseCase := usecase.NewExchangeUseCase(exchangeRepo, bookRepo, userRepo, movementRepo)
 	locationUseCase := usecase.NewLocationUseCase(locationRepo)
 	adminUseCase := usecase.NewAdminUseCase(userRepo, bookRepo, exchangeRepo, reportRepo)
