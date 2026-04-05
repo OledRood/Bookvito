@@ -104,6 +104,19 @@ func (h *UserHandler) Refresh(c *gin.Context) {
 	c.JSON(http.StatusOK, tokens)
 }
 
+func (h *UserHandler) Logout(c *gin.Context) {
+	userID, ok := c.Get("userId")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Идентификатор пользователя не найден"})
+		return
+	}
+	if err := h.userUC.Logout(userID.(string)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Сессия завершена"})
+}
+
 func (h *UserHandler) GetMyMovementHistory(c *gin.Context) {
 	userID, ok := c.Get("userId")
 	if !ok {

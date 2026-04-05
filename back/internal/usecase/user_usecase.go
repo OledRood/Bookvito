@@ -145,6 +145,20 @@ func (uc *UserUseCase) RefreshToken(refreshToken string) (*domain.TokenResponse,
 // 	return uc.userRepo.Update(user)
 // }
 
+func (uc *UserUseCase) Logout(userID string) error {
+	uuidID, err := uuid.Parse(userID)
+	if err != nil {
+		return errors.New("Неверный формат идентификатора пользователя")
+	}
+	user, err := uc.userRepo.GetByID(uuidID)
+	if err != nil {
+		return err
+	}
+	user.RefreshToken = ""
+	user.RefreshTokenExpiresAt = time.Time{}
+	return uc.userRepo.Update(user)
+}
+
 func (uc *UserUseCase) GetUserByID(id string) (*domain.User, error) {
 	uuidID, err := uuid.Parse(id)
 	if err != nil {

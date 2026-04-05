@@ -40,6 +40,8 @@ func NewRouter(
 			authed.PUT("/me", userHandler.UpdateMe)
 			// Delete current authenticated user
 			authed.DELETE("/me", userHandler.DeleteMe)
+			// Logout: revokes refresh token in DB
+			authed.POST("/logout", userHandler.Logout)
 			// TODO: получить все брони, историю обменов и т.д.
 
 		}

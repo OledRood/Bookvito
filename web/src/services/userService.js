@@ -58,10 +58,23 @@ export const deleteProfile = async () => {
   return data;
 };
 
+export const logout = async () => {
+  try {
+    // Read token synchronously before clearTokens() wipes localStorage
+    const token = localStorage.getItem('token') || localStorage.getItem('accessToken');
+    await api.post('users/logout', {}, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+  } catch (e) {
+    // ignore — tokens are cleared client-side regardless
+  }
+};
+
 export default {
   login,
   register,
   getProfile,
   updateProfile,
   deleteProfile,
+  logout,
 };

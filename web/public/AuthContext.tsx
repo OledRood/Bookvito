@@ -32,6 +32,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState<boolean>(true); // Для обработки начальной загрузки и проверки токена
 
   // При монтировании пытаемся восстановить пользователя из localStorage
+  // и подписываемся на событие принудительного выхода из interceptor
   useEffect(() => {
     try {
       const stored = localStorage.getItem('user');
@@ -42,11 +43,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsAuthenticated(true);
       }
     } catch (e) {
-      // ignore parse errors
       console.warn('Failed to restore auth from localStorage', e);
     } finally {
       setLoading(false);
     }
+
+    const handleUnauthorized = () => {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+      setUser(null);
+      setIsAuthenticated(false);
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
   }, []);
 
   const saveTokens = (accessToken: string, refreshToken: string, userData: User) => {
@@ -136,6 +147,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const logout = useCallback(() => {
+    userService.logout(); // revoke refresh token on server (fire-and-forget)
     clearTokens();
   }, []);
 

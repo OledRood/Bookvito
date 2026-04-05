@@ -12,6 +12,7 @@ type UserUseCase interface {
 	ListUsers(limit, offset int) ([]*User, error)
 	UpdateUserRole(userID uuid.UUID, role UserRole) error
 	RefreshToken(refreshToken string) (*TokenResponse, error)
+	Logout(userID string) error
 	GetUserMovementHistory(userID string) ([]*BookMovementHistory, error)
 }
 
