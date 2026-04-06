@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,20 +17,21 @@ import (
 )
 
 type BookHandler struct {
-	bookUC domain.BookUseCase
+	bookUC       domain.BookUseCase
+	imageStorage domain.ImageStorage
 }
 
 const maxUploadImageSize = 20 * 1024 * 1024
 
-func NewBookHandler(bookUC domain.BookUseCase) *BookHandler {
-	return &BookHandler{bookUC: bookUC}
+func NewBookHandler(bookUC domain.BookUseCase, imageStorage domain.ImageStorage) *BookHandler {
+	return &BookHandler{bookUC: bookUC, imageStorage: imageStorage}
 }
 
 // AutoFillBook returns metadata for a book using external provider (e.g., Google Books).
 func (h *BookHandler) AutoFillBook(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Параметр q обязателен"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Параметр q обязателен")
 		return
 	}
 
@@ -47,9 +47,14 @@ func (h *BookHandler) AutoFillBook(c *gin.Context) {
 // UploadImage handles multipart image upload. Field name: "image".
 // It saves file into ./data/images and returns JSON { "url": "/images/<filename>" }.
 func (h *BookHandler) UploadImage(c *gin.Context) {
+	if h.imageStorage == nil {
+		WriteError(c, http.StatusInternalServerError, domain.ErrorCodeInternal, "Image storage is not configured")
+		return
+	}
+
 	file, err := c.FormFile("image")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Требуется файл изображения"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Требуется файл изображения")
 		return
 	}
 
@@ -57,35 +62,34 @@ func (h *BookHandler) UploadImage(c *gin.Context) {
 	switch ext {
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp":
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неподдерживаемый формат изображения"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неподдерживаемый формат изображения")
 		return
 	}
 
 	if file.Size <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Файл изображения пустой"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Файл изображения пустой")
 		return
 	}
 	if file.Size > maxUploadImageSize {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Размер изображения не может превышать 20 MB"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Размер изображения не может превышать 20 MB")
 		return
 	}
 
-	imagesDir := "./data/images"
-	if err := os.MkdirAll(imagesDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось создать каталог изображений"})
+	src, err := file.Open()
+	if err != nil {
+		WriteError(c, http.StatusInternalServerError, domain.ErrorCodeInternal, "Не удалось открыть файл изображения")
 		return
 	}
+	defer src.Close()
 
 	filename := uuid.New().String() + ext
-	destPath := filepath.Join(imagesDir, filename)
-
-	if err := c.SaveUploadedFile(file, destPath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось сохранить файл"})
+	publicURL, err := h.imageStorage.Save(filename, file.Header.Get("Content-Type"), src)
+	if err != nil {
+		WriteError(c, http.StatusInternalServerError, domain.ErrorCodeInternal, "Не удалось сохранить файл")
 		return
 	}
 
-	url := fmt.Sprintf("/images/%s", filename)
-	c.JSON(http.StatusOK, gin.H{"url": url})
+	c.JSON(http.StatusOK, gin.H{"url": publicURL})
 }
 
 func (h *BookHandler) GetSummaryList(c *gin.Context) {
@@ -111,7 +115,7 @@ func (h *BookHandler) GetSummaryList(c *gin.Context) {
 func (h *BookHandler) GetList(c *gin.Context) {
 	filter, err := parseBookListFilter(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 
@@ -431,17 +435,17 @@ func hasBookUpdateFields(input domain.BookUpdateInput) bool {
 func getRequestUser(c *gin.Context) (uuid.UUID, bool, error) {
 	userIdRaw, ok := c.Get("userId")
 	if !ok {
-		return uuid.Nil, false, fmt.Errorf("Пользователь не аутентифицирован")
+		return uuid.Nil, false, domain.NewUnauthorizedError("Пользователь не аутентифицирован")
 	}
 
 	userIDStr, ok := userIdRaw.(string)
 	if !ok || userIDStr == "" {
-		return uuid.Nil, false, fmt.Errorf("Неверный идентификатор пользователя в токене")
+		return uuid.Nil, false, domain.NewUnauthorizedError("Неверный идентификатор пользователя в токене")
 	}
 
 	userUUID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		return uuid.Nil, false, fmt.Errorf("Неверный формат идентификатора пользователя")
+		return uuid.Nil, false, domain.NewUnauthorizedError("Неверный формат идентификатора пользователя")
 	}
 
 	isAdmin := false
@@ -455,28 +459,7 @@ func getRequestUser(c *gin.Context) (uuid.UUID, bool, error) {
 }
 
 func respondBookUseCaseError(c *gin.Context, err error) {
-	if err == nil {
-		return
-	}
-
-	code, ok := domain.AppErrorCode(err)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	switch code {
-	case domain.ErrorCodeValidation:
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	case domain.ErrorCodeForbidden:
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-	case domain.ErrorCodeNotFound:
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case domain.ErrorCodeConflict:
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	}
+	WriteErrorFromErr(c, err)
 }
 
 func extractOptionalLocationID(bodyMap map[string]json.RawMessage, keys ...string) (*uuid.UUID, error) {
@@ -512,24 +495,24 @@ func (h *BookHandler) Create(c *gin.Context) {
 
 	var bodyMap map[string]json.RawMessage
 	if err := json.Unmarshal(bodyBytes, &bodyMap); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный JSON"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Некорректный JSON")
 		return
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 
 	if req.ImageURL == "" {
 		if raw, ok := bodyMap["imageUrl"]; ok {
 			if err := json.Unmarshal(raw, &req.ImageURL); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный imageUrl"})
+				WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный imageUrl")
 				return
 			}
 		} else if raw, ok := bodyMap["image_url"]; ok {
 			if err := json.Unmarshal(raw, &req.ImageURL); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный image_url"})
+				WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный image_url")
 				return
 			}
 		}
@@ -538,7 +521,7 @@ func (h *BookHandler) Create(c *gin.Context) {
 	if req.CurrentLocationID == nil {
 		locationID, err := extractOptionalLocationID(bodyMap, "locationId", "current_location_id", "currentLocationId")
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 			return
 		}
 		req.CurrentLocationID = locationID
@@ -546,13 +529,13 @@ func (h *BookHandler) Create(c *gin.Context) {
 
 	userIdRaw, exists := c.Get("userId")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не аутентифицирован"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Пользователь не аутентифицирован")
 		return
 	}
 
 	userIDStr, ok := userIdRaw.(string)
 	if !ok || userIDStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный идентификатор пользователя в токене"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Неверный идентификатор пользователя в токене")
 		return
 	}
 
@@ -873,24 +856,24 @@ func (h *BookHandler) Return(c *gin.Context) {
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	var bodyMap map[string]json.RawMessage
 	if err := json.Unmarshal(bodyBytes, &bodyMap); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный JSON"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Некорректный JSON")
 		return
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 
 	if req.ImageURL == "" {
 		if raw, ok := bodyMap["imageUrl"]; ok {
 			if err := json.Unmarshal(raw, &req.ImageURL); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный imageUrl"})
+				WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный imageUrl")
 				return
 			}
 		} else if raw, ok := bodyMap["image_url"]; ok {
 			if err := json.Unmarshal(raw, &req.ImageURL); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный image_url"})
+				WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный image_url")
 				return
 			}
 		}
@@ -899,14 +882,14 @@ func (h *BookHandler) Return(c *gin.Context) {
 	if req.CurrentLocationID == nil {
 		locationID, err := extractOptionalLocationID(bodyMap, "locationId", "current_location_id", "currentLocationId")
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 			return
 		}
 		req.CurrentLocationID = locationID
 	}
 	userID, isAdmin, err := getRequestUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, err.Error())
 		return
 	}
 
@@ -936,47 +919,39 @@ func (h *BookHandler) SetImage(c *gin.Context) {
 	idParam := c.Param("id")
 	bookID, err := uuid.Parse(idParam)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный идентификатор книги"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный идентификатор книги")
 		return
 	}
 
 	var req SetImageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 
-	// Normalize filename
-	filename := req.ImageURL
-	if strings.HasPrefix(filename, "/images/") {
-		filename = strings.TrimPrefix(filename, "/images/")
-	}
-	filename = filepath.Base(filename)
-
-	public := "/images/" + filename
 	userID, isAdmin, err := getRequestUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, err.Error())
 		return
 	}
 
-	if err := h.bookUC.SetBookImage(bookID, userID, isAdmin, public); err != nil {
+	if err := h.bookUC.SetBookImage(bookID, userID, isAdmin, req.ImageURL); err != nil {
 		respondBookUseCaseError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Изображение прикреплено к книге", "image_url": public})
+	c.JSON(http.StatusOK, gin.H{"message": "Изображение прикреплено к книге", "image_url": req.ImageURL})
 }
 
 func (h *BookHandler) DeleteImage(c *gin.Context) {
 	bookID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный идентификатор книги"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный идентификатор книги")
 		return
 	}
 
 	userID, isAdmin, err := getRequestUser(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, err.Error())
 		return
 	}
 

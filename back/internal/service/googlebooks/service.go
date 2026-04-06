@@ -27,15 +27,25 @@ type GoogleBooksResponse struct {
 
 // Service implements domain.BookMetadataProvider using Google Books API.
 type Service struct {
-	apiKey string
-	client *http.Client
+	apiKey  string
+	baseURL string
+	client  *http.Client
 }
 
 // New creates a Google Books service with the provided API key.
-func New(apiKey string) *Service {
+func New(apiKey string, baseURL string, client *http.Client) *Service {
+	if client == nil {
+		client = &http.Client{Timeout: 5 * time.Second}
+	}
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		baseURL = "https://www.googleapis.com/books/v1"
+	}
+
 	return &Service{
-		apiKey: apiKey,
-		client: &http.Client{Timeout: 5 * time.Second},
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		client:  client,
 	}
 }
 
@@ -50,7 +60,7 @@ func (s *Service) Search(query string) (*domain.BookMeta, error) {
 	}
 
 	encodedQuery := url.QueryEscape(trimmed)
-	requestURL := fmt.Sprintf("https://www.googleapis.com/books/v1/volumes?q=%s&key=%s", encodedQuery, s.apiKey)
+	requestURL := fmt.Sprintf("%s/volumes?q=%s&key=%s", s.baseURL, encodedQuery, s.apiKey)
 
 	resp, err := s.client.Get(requestURL)
 	if err != nil {

@@ -17,22 +17,22 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 	println("GetByID called")
 	userIdRaw, exists := c.Get("userId")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не аутентифицирован"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Пользователь не аутентифицирован")
 		return
 	}
 
 	userIDStr, ok := userIdRaw.(string)
 	if !ok || userIDStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный идентификатор пользователя в токене"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Неверный идентификатор пользователя в токене")
 		return
 	}
 	user, err := h.userUC.GetUserByID(userIDStr)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	if user == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Пользователь не найден"})
+		WriteError(c, http.StatusNotFound, domain.ErrorCodeNotFound, "Пользователь не найден")
 		return
 	}
 	c.JSON(http.StatusOK, user)
@@ -52,13 +52,13 @@ type RegisterRequest struct {
 func (h *UserHandler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 
 	tokens, err := h.userUC.RegisterUser(req.Email, req.Password, req.Name)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 
@@ -74,12 +74,12 @@ func (h *UserHandler) Login(c *gin.Context) {
 	var req LoginRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 	tokens, err := h.userUC.LoginUser(req.Email, req.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, tokens)
@@ -92,13 +92,13 @@ type RefreshRequest struct {
 func (h *UserHandler) Refresh(c *gin.Context) {
 	var req RefreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 
 	tokens, err := h.userUC.RefreshToken(req.RefreshToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, tokens)
@@ -107,11 +107,11 @@ func (h *UserHandler) Refresh(c *gin.Context) {
 func (h *UserHandler) Logout(c *gin.Context) {
 	userID, ok := c.Get("userId")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Идентификатор пользователя не найден"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Идентификатор пользователя не найден")
 		return
 	}
 	if err := h.userUC.Logout(userID.(string)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Сессия завершена"})
@@ -120,14 +120,13 @@ func (h *UserHandler) Logout(c *gin.Context) {
 func (h *UserHandler) GetMyMovementHistory(c *gin.Context) {
 	userID, ok := c.Get("userId")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Идентификатор пользователя не найден в контексте"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Идентификатор пользователя не найден в контексте")
 		return
 	}
 
 	history, err := h.userUC.GetUserMovementHistory(userID.(string))
 	if err != nil {
-		// В usecase уже есть проверка на формат UUID, но на всякий случай
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, history)
@@ -142,25 +141,25 @@ type UpdateUserRequest struct {
 func (h *UserHandler) UpdateMe(c *gin.Context) {
 	userIdRaw, exists := c.Get("userId")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не аутентифицирован"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Пользователь не аутентифицирован")
 		return
 	}
 
 	userIDStr, ok := userIdRaw.(string)
 	if !ok || userIDStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный идентификатор пользователя в токене"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Неверный идентификатор пользователя в токене")
 		return
 	}
 
 	var req UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 
 	user, err := h.userUC.GetUserByID(userIDStr)
 	if err != nil || user == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось загрузить пользователя"})
+		WriteError(c, http.StatusInternalServerError, domain.ErrorCodeInternal, "Не удалось загрузить пользователя")
 		return
 	}
 
@@ -174,7 +173,7 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 	}
 
 	if err := h.userUC.UpdateUser(user); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 
@@ -185,18 +184,18 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 func (h *UserHandler) DeleteMe(c *gin.Context) {
 	userIdRaw, exists := c.Get("userId")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не аутентифицирован"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Пользователь не аутентифицирован")
 		return
 	}
 
 	userIDStr, ok := userIdRaw.(string)
 	if !ok || userIDStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный идентификатор пользователя в токене"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Неверный идентификатор пользователя в токене")
 		return
 	}
 
 	if err := h.userUC.DeleteUser(userIDStr); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 

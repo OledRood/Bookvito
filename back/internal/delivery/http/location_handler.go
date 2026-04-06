@@ -25,11 +25,11 @@ func (h *LocationHandler) Create(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 	if !checkAdminRole(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only admin can create locations"})
+		WriteError(c, http.StatusForbidden, domain.ErrorCodeForbidden, "only admin can create locations")
 		return
 	}
 
@@ -39,7 +39,7 @@ func (h *LocationHandler) Create(c *gin.Context) {
 	}
 
 	if err := h.locationUC.Create(location); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"message": "location created successfully"})
@@ -49,21 +49,21 @@ func (h *LocationHandler) GetByID(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid location ID"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "invalid location ID")
 		return
 	}
 
 	location, err := h.locationUC.GetByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "location not found"})
+			WriteError(c, http.StatusNotFound, domain.ErrorCodeNotFound, "location not found")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	if location == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "location not found"})
+		WriteError(c, http.StatusNotFound, domain.ErrorCodeNotFound, "location not found")
 		return
 	}
 
@@ -73,7 +73,7 @@ func (h *LocationHandler) GetByID(c *gin.Context) {
 func (h *LocationHandler) GetAll(c *gin.Context) {
 	locations, err := h.locationUC.GetAll()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 
@@ -84,7 +84,7 @@ func (h *LocationHandler) Update(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid location ID"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "invalid location ID")
 		return
 	}
 
@@ -93,12 +93,12 @@ func (h *LocationHandler) Update(c *gin.Context) {
 		Address string `json:"address" binding:"required"`
 	}
 	if !checkAdminRole(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only admin can create locations"})
+		WriteError(c, http.StatusForbidden, domain.ErrorCodeForbidden, "only admin can create locations")
 		return
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 
@@ -109,7 +109,7 @@ func (h *LocationHandler) Update(c *gin.Context) {
 	}
 
 	if err := h.locationUC.Update(location); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 
@@ -119,23 +119,23 @@ func (h *LocationHandler) Update(c *gin.Context) {
 func (h *LocationHandler) Delete(c *gin.Context) {
 
 	if !checkAdminRole(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only admin can create locations"})
+		WriteError(c, http.StatusForbidden, domain.ErrorCodeForbidden, "only admin can create locations")
 		return
 	}
 
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid location ID"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "invalid location ID")
 		return
 	}
 
 	if err := h.locationUC.Delete(id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "location not found"})
+			WriteError(c, http.StatusNotFound, domain.ErrorCodeNotFound, "location not found")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 

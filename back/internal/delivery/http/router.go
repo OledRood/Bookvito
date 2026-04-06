@@ -15,6 +15,7 @@ func NewRouter(
 	locationUC domain.LocationUseCase,
 	adminUC domain.AdminUseCase,
 	moderUC domain.ModerUseCase,
+	imageStorage domain.ImageStorage,
 	cfg *config.Config,
 ) {
 	// Health check
@@ -48,7 +49,7 @@ func NewRouter(
 
 		books := api.Group("/books")
 		{
-			bookHandler := NewBookHandler(bookUC)
+			bookHandler := NewBookHandler(bookUC, imageStorage)
 
 			// Summary is a public endpoint but we want to apply optional auth so that
 			// when the client sends a valid token we can exclude user's own/returned books.

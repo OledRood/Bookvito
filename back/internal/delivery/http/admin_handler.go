@@ -21,7 +21,7 @@ func NewAdminHandler(userUC domain.UserUseCase, adminUC domain.AdminUseCase) *Ad
 func (h *AdminHandler) GetStats(c *gin.Context) {
 	stats, err := h.adminUC.GetStats()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, stats)
@@ -31,7 +31,7 @@ func (h *AdminHandler) GetStats(c *gin.Context) {
 func (h *AdminHandler) ListUsers(c *gin.Context) {
 	users, err := h.userUC.ListUsers(100, 0)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, users)
@@ -42,7 +42,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 	idParam := c.Param("id")
 	userID, err := uuid.Parse(idParam)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный идентификатор пользователя"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный идентификатор пользователя")
 		return
 	}
 
@@ -50,18 +50,18 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		Role string `json:"role" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 
 	role := domain.UserRole(req.Role)
 	if role != domain.RoleUser && role != domain.RoleModer && role != domain.RoleAdmin {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Недопустимое значение роли. Допустимые: user, moder, admin"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Недопустимое значение роли. Допустимые: user, moder, admin")
 		return
 	}
 
 	if err := h.userUC.UpdateUserRole(userID, role); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Роль пользователя обновлена"})

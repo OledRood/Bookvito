@@ -2,18 +2,11 @@ package main
 
 import (
 	"bookvito/config"
-	"bookvito/internal/delivery/http"
-	"bookvito/internal/repository/postgres"
-	"bookvito/internal/service/googlebooks"
+	"bookvito/internal/app"
 	"bookvito/internal/usecase"
 	"bookvito/pkg/database"
 	"log"
-	"strings"
 	"time"
-
-	"github.com/gin-gonic/gin"
-
-	"github.com/gin-contrib/cors"
 )
 
 func main() {
@@ -34,70 +27,17 @@ func main() {
 		log.Fatalf("Не удалось выполнить миграцию базы данных: %v", err)
 	}
 
-	// Initialize repositories
-	userRepo := postgres.NewUserRepository(db)
-	bookRepo := postgres.NewBookRepository(db)
-	exchangeRepo := postgres.NewExchangeRepository(db)
-	movementRepo := postgres.NewBookMovementHistoryRepository(db)
-	locationRepo := postgres.NewLocationRepository(db)
-	reportRepo := postgres.NewReportRepository(db)
+	deps, err := app.BuildDependencies(cfg, db)
+	if err != nil {
+		log.Fatalf("Не удалось собрать зависимости приложения: %v", err)
+	}
 
-	// Initialize use cases
-	userUseCase := usecase.NewUserUseCase(userRepo, movementRepo, cfg.JWTSecret)
-	googleBooksSvc := googlebooks.New(cfg.GoogleBooksAPIKey)
-
-	bookUseCase := usecase.NewBookUseCase(bookRepo, movementRepo, exchangeRepo, locationRepo, googleBooksSvc)
-	exchangeUseCase := usecase.NewExchangeUseCase(exchangeRepo, bookRepo, userRepo, movementRepo)
-	locationUseCase := usecase.NewLocationUseCase(locationRepo)
-	adminUseCase := usecase.NewAdminUseCase(userRepo, bookRepo, exchangeRepo, reportRepo)
-	moderUseCase := usecase.NewModerUseCase(reportRepo, bookRepo)
-
-	// Initialize HTTP handlers
-	router := gin.Default()
-
-	// CORS: allow dev frontend origin and required methods/headers so browser preflight (OPTIONS) succeeds
-	// Allow browser dev servers on localhost (any port) and 127.0.0.1
-	router.Use(cors.New(cors.Config{
-		AllowOriginFunc: func(origin string) bool {
-			if strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1") {
-				return true
-			}
-
-			normalizedOrigin := strings.TrimRight(strings.ToLower(origin), "/")
-			normalizedSiteURL := strings.TrimRight(strings.ToLower(cfg.SiteURL), "/")
-
-			return normalizedOrigin == normalizedSiteURL || normalizedOrigin == "https://www.bookvito.ru"
-		},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
-
-	// Serve uploaded images from disk at /images
-	router.Static("/images", "./data/images")
-
-	router.NoRoute(func(c *gin.Context) {
-		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
-			c.JSON(404, gin.H{"error": "Маршрут не найден"})
-			return
-		}
-		c.JSON(404, gin.H{"error": "Страница не найдена"})
-	})
-
-	router.NoMethod(func(c *gin.Context) {
-		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
-			c.JSON(405, gin.H{"error": "Метод не поддерживается"})
-			return
-		}
-		c.JSON(405, gin.H{"error": "Метод не поддерживается"})
-	})
-
-	http.NewRouter(router, userUseCase, bookUseCase, exchangeUseCase, locationUseCase, adminUseCase, moderUseCase, cfg)
+	router := app.BuildRouter(cfg, deps)
 
 	// Запускаем фоновую задачу для отмены просроченных бронирований
-	go startExpiredExchangesCron(exchangeUseCase)
+	if exchangeUC, ok := deps.ExchangeUseCase.(*usecase.ExchangeUseCase); ok {
+		go startExpiredExchangesCron(exchangeUC)
+	}
 	// Start server
 	log.Printf("Server starting on port %s", cfg.ServerPort)
 	for _, ri := range router.Routes() {

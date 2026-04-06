@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bookvito/internal/domain"
 	"log"
 	"net/http"
 	"strings"
@@ -14,14 +15,16 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			log.Println("AuthMiddleware: Authorization header missing")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization header missing"})
+			c.Abort()
+			WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Authorization header missing")
 			return
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			log.Println("AuthMiddleware: Invalid Authorization header format")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization header format"})
+			c.Abort()
+			WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Invalid Authorization header format")
 			return
 		}
 
@@ -37,13 +40,15 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 		if err != nil || !token.Valid {
 			// Логируем конкретную ошибку парсинга токена
 			log.Printf("AuthMiddleware: Invalid token: %v", err)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.Abort()
+			WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Invalid token")
 			return
 		}
 
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
+			c.Abort()
+			WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Invalid token claims")
 			log.Println("AuthMiddleware: Invalid token claims")
 			return
 		}
@@ -51,7 +56,8 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 		userID, ok := claims["userId"].(string)
 		if !ok || userID == "" {
 			log.Println("AuthMiddleware: userId not found or is not a string in token")
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "userId not found in token"})
+			c.Abort()
+			WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "userId not found in token")
 			return
 		}
 
@@ -76,12 +82,14 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		roleRaw, exists := c.Get("role")
 		if !exists {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Недостаточно прав"})
+			c.Abort()
+			WriteError(c, http.StatusForbidden, domain.ErrorCodeForbidden, "Недостаточно прав")
 			return
 		}
 		role, ok := roleRaw.(string)
 		if !ok || !allowed[role] {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Недостаточно прав"})
+			c.Abort()
+			WriteError(c, http.StatusForbidden, domain.ErrorCodeForbidden, "Недостаточно прав")
 			return
 		}
 		c.Next()

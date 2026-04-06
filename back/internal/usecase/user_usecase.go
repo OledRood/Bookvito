@@ -33,7 +33,7 @@ func (uc *UserUseCase) RegisterUser(email string, password string, name string) 
 	// returned error and the returned user pointer to be robust.
 	existingUser, err := uc.userRepo.GetByEmail(email)
 	if err == nil && existingUser != nil {
-		return nil, errors.New("Пользователь с таким email уже существует")
+		return nil, domain.NewConflictError("Пользователь с таким email уже существует")
 	}
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		// If the error is not "record not found", propagate DB error
@@ -148,10 +148,13 @@ func (uc *UserUseCase) RefreshToken(refreshToken string) (*domain.TokenResponse,
 func (uc *UserUseCase) Logout(userID string) error {
 	uuidID, err := uuid.Parse(userID)
 	if err != nil {
-		return errors.New("Неверный формат идентификатора пользователя")
+		return domain.NewValidationError("Неверный формат идентификатора пользователя")
 	}
 	user, err := uc.userRepo.GetByID(uuidID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NewNotFoundError("Пользователь не найден")
+		}
 		return err
 	}
 	user.RefreshToken = ""
@@ -162,9 +165,16 @@ func (uc *UserUseCase) Logout(userID string) error {
 func (uc *UserUseCase) GetUserByID(id string) (*domain.User, error) {
 	uuidID, err := uuid.Parse(id)
 	if err != nil {
-		return nil, errors.New("Неверный формат идентификатора пользователя")
+		return nil, domain.NewValidationError("Неверный формат идентификатора пользователя")
 	}
-	return uc.userRepo.GetByID(uuidID)
+	user, err := uc.userRepo.GetByID(uuidID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.NewNotFoundError("Пользователь не найден")
+		}
+		return nil, err
+	}
+	return user, nil
 }
 
 // UpdateUser updates user information in the repository
@@ -175,7 +185,7 @@ func (uc *UserUseCase) UpdateUser(user *domain.User) error {
 func (uc *UserUseCase) DeleteUser(id string) error {
 	uuidID, err := uuid.Parse(id)
 	if err != nil {
-		return errors.New("Неверный формат идентификатора пользователя")
+		return domain.NewValidationError("Неверный формат идентификатора пользователя")
 	}
 	return uc.userRepo.Delete(uuidID)
 }
@@ -183,7 +193,7 @@ func (uc *UserUseCase) DeleteUser(id string) error {
 func (uc *UserUseCase) GetUserMovementHistory(userID string) ([]*domain.BookMovementHistory, error) {
 	uuidID, err := uuid.Parse(userID)
 	if err != nil {
-		return nil, errors.New("Неверный формат идентификатора пользователя")
+		return nil, domain.NewValidationError("Неверный формат идентификатора пользователя")
 	}
 	return uc.movementRepo.GetByUserID(uuidID)
 }
@@ -195,6 +205,9 @@ func (uc *UserUseCase) ListUsers(limit, offset int) ([]*domain.User, error) {
 func (uc *UserUseCase) UpdateUserRole(userID uuid.UUID, role domain.UserRole) error {
 	user, err := uc.userRepo.GetByID(userID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NewNotFoundError("Пользователь не найден")
+		}
 		return err
 	}
 	user.Role = role

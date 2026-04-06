@@ -31,18 +31,18 @@ func (h *ModerHandler) CreateReport(c *gin.Context) {
 	idParam := c.Param("id")
 	bookID, err := uuid.Parse(idParam)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный идентификатор книги"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный идентификатор книги")
 		return
 	}
 
 	userIdRaw, exists := c.Get("userId")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не аутентифицирован"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Пользователь не аутентифицирован")
 		return
 	}
 	userID, err := uuid.Parse(userIdRaw.(string))
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный идентификатор пользователя"})
+		WriteError(c, http.StatusUnauthorized, domain.ErrorCodeUnauthorized, "Неверный идентификатор пользователя")
 		return
 	}
 
@@ -50,12 +50,12 @@ func (h *ModerHandler) CreateReport(c *gin.Context) {
 		Reason string `json:"reason" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, err.Error())
 		return
 	}
 
 	if err := h.moderUC.CreateReport(bookID, userID, req.Reason); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"message": "Жалоба отправлена"})
@@ -65,11 +65,11 @@ func (h *ModerHandler) CreateReport(c *gin.Context) {
 func (h *ModerHandler) ResolveReport(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный идентификатор жалобы"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный идентификатор жалобы")
 		return
 	}
 	if err := h.moderUC.ResolveReport(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Жалоба закрыта"})
@@ -79,11 +79,11 @@ func (h *ModerHandler) ResolveReport(c *gin.Context) {
 func (h *ModerHandler) DismissReport(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный идентификатор жалобы"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный идентификатор жалобы")
 		return
 	}
 	if err := h.moderUC.DismissReport(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Жалоба отклонена"})
@@ -93,11 +93,11 @@ func (h *ModerHandler) DismissReport(c *gin.Context) {
 func (h *ModerHandler) ArchiveBook(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный идентификатор книги"})
+		WriteError(c, http.StatusBadRequest, domain.ErrorCodeValidation, "Неверный идентификатор книги")
 		return
 	}
 	if err := h.moderUC.ArchiveBook(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		WriteErrorFromErr(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Книга архивирована"})

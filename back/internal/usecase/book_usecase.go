@@ -4,7 +4,6 @@ import (
 	"bookvito/internal/domain"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -18,15 +17,17 @@ type BookUseCase struct {
 	exchangeUseCaseRepo domain.ExchangeRepository
 	locationRepo        domain.LocationRepository
 	metadataProvider    domain.BookMetadataProvider
+	imageStorage        domain.ImageStorage
 }
 
-func NewBookUseCase(bookRepo domain.BookRepository, movementHistoryRepo domain.BookMovementHistoryRepository, exchangeUseCaseRepo domain.ExchangeRepository, locationRepo domain.LocationRepository, metadataProvider domain.BookMetadataProvider) *BookUseCase {
+func NewBookUseCase(bookRepo domain.BookRepository, movementHistoryRepo domain.BookMovementHistoryRepository, exchangeUseCaseRepo domain.ExchangeRepository, locationRepo domain.LocationRepository, metadataProvider domain.BookMetadataProvider, imageStorage domain.ImageStorage) *BookUseCase {
 	return &BookUseCase{
 		bookRepo:            bookRepo,
 		movementHistoryRepo: movementHistoryRepo,
 		exchangeUseCaseRepo: exchangeUseCaseRepo,
 		locationRepo:        locationRepo,
 		metadataProvider:    metadataProvider,
+		imageStorage:        imageStorage,
 	}
 }
 
@@ -272,7 +273,7 @@ func (uc *BookUseCase) Return(updatedBook *domain.Book, userID uuid.UUID, isAdmi
 	bookFromDB.Author = author
 	bookFromDB.Description = description
 	if updatedBook.ImageURL != "" {
-		imageURL, err := validateImageURL(updatedBook.ImageURL)
+		imageURL, err := uc.validateImageURL(updatedBook.ImageURL)
 		if err != nil {
 			return err
 		}
@@ -488,7 +489,7 @@ func (uc *BookUseCase) UpdateBook(bookID uuid.UUID, userID uuid.UUID, isAdmin bo
 	}
 
 	if input.ImageURL != nil {
-		imageURL, err := validateImageURL(*input.ImageURL)
+		imageURL, err := uc.validateImageURL(*input.ImageURL)
 		if err != nil {
 			return nil, err
 		}
@@ -725,13 +726,16 @@ func (uc *BookUseCase) GetBookStats(bookID uuid.UUID, userID uuid.UUID, isAdmin 
 
 // SetBookImage sets the ImageURL for a given book.
 func (uc *BookUseCase) SetBookImage(bookID uuid.UUID, userID uuid.UUID, isAdmin bool, imageURL string) error {
+	if uc.imageStorage == nil {
+		return domain.NewInternalError("image storage is not configured", nil)
+	}
 	if err := validateBookID(bookID); err != nil {
 		return err
 	}
 	if userID == uuid.Nil {
 		return domain.NewValidationError("Неверный идентификатор пользователя")
 	}
-	validatedImageURL, err := validateImageURL(imageURL)
+	validatedImageURL, err := uc.validateImageURL(imageURL)
 	if err != nil {
 		return err
 	}
@@ -751,10 +755,8 @@ func (uc *BookUseCase) SetBookImage(bookID uuid.UUID, userID uuid.UUID, isAdmin 
 		return domain.NewForbiddenError("Доступ запрещён: изменять изображение книги может только владелец, текущий заёмщик или администратор")
 	}
 	if strings.TrimSpace(book.ImageURL) != "" && book.ImageURL != validatedImageURL {
-		if oldImagePath, pathErr := imagePathFromURL(book.ImageURL); pathErr == nil {
-			if removeErr := os.Remove(oldImagePath); removeErr != nil && !os.IsNotExist(removeErr) {
-				return removeErr
-			}
+		if err := uc.imageStorage.Delete(book.ImageURL); err != nil {
+			return err
 		}
 	}
 	book.ImageURL = validatedImageURL
@@ -765,6 +767,9 @@ func (uc *BookUseCase) SetBookImage(bookID uuid.UUID, userID uuid.UUID, isAdmin 
 }
 
 func (uc *BookUseCase) DeleteBookImage(bookID uuid.UUID, userID uuid.UUID, isAdmin bool) error {
+	if uc.imageStorage == nil {
+		return domain.NewInternalError("image storage is not configured", nil)
+	}
 	if err := validateBookID(bookID); err != nil {
 		return err
 	}
@@ -790,11 +795,7 @@ func (uc *BookUseCase) DeleteBookImage(bookID uuid.UUID, userID uuid.UUID, isAdm
 		return domain.NewValidationError("У книги нет изображения")
 	}
 
-	imagePath, err := imagePathFromURL(book.ImageURL)
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(imagePath); err != nil && !os.IsNotExist(err) {
+	if err := uc.imageStorage.Delete(book.ImageURL); err != nil {
 		return err
 	}
 

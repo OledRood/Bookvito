@@ -1,0 +1,9 @@
+{
+  "name": "bookvito-backend-tests",
+  "private": true,
+  "scripts": {
+    "test:unit": "./scripts/test-unit.sh",
+    "test:integration": "go test -tags=integration ./tests/integration/... -count=1",
+    "test:all": "npm run test:unit && npm run test:integration"
+  }
+}

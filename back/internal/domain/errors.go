@@ -5,10 +5,12 @@ import "errors"
 type ErrorCode string
 
 const (
-	ErrorCodeValidation ErrorCode = "validation"
-	ErrorCodeForbidden  ErrorCode = "forbidden"
-	ErrorCodeNotFound   ErrorCode = "not_found"
-	ErrorCodeConflict   ErrorCode = "conflict"
+	ErrorCodeValidation   ErrorCode = "validation"
+	ErrorCodeUnauthorized ErrorCode = "unauthorized"
+	ErrorCodeForbidden    ErrorCode = "forbidden"
+	ErrorCodeNotFound     ErrorCode = "not_found"
+	ErrorCodeConflict     ErrorCode = "conflict"
+	ErrorCodeInternal     ErrorCode = "internal"
 )
 
 type AppError struct {
@@ -41,6 +43,10 @@ func NewValidationError(message string) error {
 	return &AppError{Code: ErrorCodeValidation, Message: message}
 }
 
+func NewUnauthorizedError(message string) error {
+	return &AppError{Code: ErrorCodeUnauthorized, Message: message}
+}
+
 func NewForbiddenError(message string) error {
 	return &AppError{Code: ErrorCodeForbidden, Message: message}
 }
@@ -51,6 +57,10 @@ func NewNotFoundError(message string) error {
 
 func NewConflictError(message string) error {
 	return &AppError{Code: ErrorCodeConflict, Message: message}
+}
+
+func NewInternalError(message string, err error) error {
+	return &AppError{Code: ErrorCodeInternal, Message: message, Err: err}
 }
 
 func AppErrorCode(err error) (ErrorCode, bool) {

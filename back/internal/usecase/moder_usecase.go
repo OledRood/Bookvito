@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type ModerUseCase struct {
@@ -25,7 +26,7 @@ func (uc *ModerUseCase) GetReports(limit, offset int) ([]*domain.Report, error) 
 
 func (uc *ModerUseCase) CreateReport(bookID uuid.UUID, userID uuid.UUID, reason string) error {
 	if reason == "" {
-		return errors.New("причина жалобы обязательна")
+		return domain.NewValidationError("причина жалобы обязательна")
 	}
 	report := &domain.Report{
 		BookID: bookID,
@@ -47,6 +48,9 @@ func (uc *ModerUseCase) DismissReport(reportID uuid.UUID) error {
 func (uc *ModerUseCase) ArchiveBook(bookID uuid.UUID) error {
 	book, err := uc.bookRepo.GetByID(bookID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NewNotFoundError("Книга не найдена")
+		}
 		return err
 	}
 	book.Status = domain.BookArchived

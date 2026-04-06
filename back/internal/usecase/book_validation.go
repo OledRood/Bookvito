@@ -3,8 +3,6 @@ package usecase
 import (
 	"bookvito/internal/domain"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -17,26 +15,7 @@ const (
 	maxBookAuthorLength      = 255
 	maxBookDescriptionLength = 2000
 	maxBookImageURLLength    = 500
-	bookImagesDir            = "./data/images"
-	bookImagesPrefix         = "/images/"
 )
-
-func imagePathFromURL(imageURL string) (string, error) {
-	value := strings.TrimSpace(imageURL)
-	if value == "" {
-		return "", domain.NewValidationError("image_url пустой")
-	}
-	if !strings.HasPrefix(value, bookImagesPrefix) {
-		return "", domain.NewValidationError("image_url должен начинаться с /images/")
-	}
-
-	filename := strings.TrimPrefix(value, bookImagesPrefix)
-	if filename == "" || filename != filepath.Base(filename) {
-		return "", domain.NewValidationError("Некорректный image_url")
-	}
-
-	return filepath.Join(bookImagesDir, filename), nil
-}
 
 func validateBookID(bookID uuid.UUID) error {
 	if bookID == uuid.Nil {
@@ -84,7 +63,7 @@ func validateCondition(condition domain.BookCondition) error {
 	}
 }
 
-func validateImageURL(imageURL string) (string, error) {
+func (uc *BookUseCase) validateImageURL(imageURL string) (string, error) {
 	value := strings.TrimSpace(imageURL)
 	if value == "" {
 		return "", nil
@@ -92,19 +71,16 @@ func validateImageURL(imageURL string) (string, error) {
 	if utf8.RuneCountInString(value) > maxBookImageURLLength {
 		return "", domain.NewValidationError("image_url не может быть длиннее 500 символов")
 	}
-	if !strings.HasPrefix(value, bookImagesPrefix) {
-		return "", domain.NewValidationError("image_url должен начинаться с /images/")
+	if uc.imageStorage == nil {
+		return "", domain.NewInternalError("image storage is not configured", nil)
 	}
 
-	fullPath, err := imagePathFromURL(value)
+	exists, err := uc.imageStorage.Exists(value)
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(fullPath); err != nil {
-		if os.IsNotExist(err) {
-			return "", domain.NewValidationError("Файл изображения не найден на сервере")
-		}
-		return "", err
+	if !exists {
+		return "", domain.NewValidationError("Файл изображения не найден на сервере")
 	}
 
 	return value, nil
@@ -153,7 +129,7 @@ func (uc *BookUseCase) validateBookForCreate(book *domain.Book) error {
 	if err := validateCondition(book.Condition); err != nil {
 		return err
 	}
-	imageURL, err := validateImageURL(book.ImageURL)
+	imageURL, err := uc.validateImageURL(book.ImageURL)
 	if err != nil {
 		return err
 	}
