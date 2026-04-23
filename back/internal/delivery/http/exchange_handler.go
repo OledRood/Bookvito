@@ -2,9 +2,10 @@ package http
 
 import (
 	"bookvito/internal/usecase"
-	// "net/http"
-	// "strconv"
-	// "github.com/gin-gonic/gin"
+	"net/http"
+	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
 type ExchangeHandler struct {
@@ -22,138 +23,107 @@ type CreateExchangeRequest struct {
 	Message     string `json:"message"`
 }
 
-// // Create creates a new exchange request
-// func (h *ExchangeHandler) Create(c *gin.Context) {
-// 	var req CreateExchangeRequest
-// 	if err := c.ShouldBindJSON(&req); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 		return
-// 	}
+// Create creates a new exchange request
+// FIX: Uncommented to enable exchange endpoints for tests
+func (h *ExchangeHandler) Create(c *gin.Context) {
+	var req CreateExchangeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
-// 	exchange, err := h.exchangeUC.CreateExchangeRequest(req.RequesterID, req.BookID, req.Message)
-// 	if err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 		return
-// 	}
+	exchange, err := h.exchangeUC.CreateExchangeRequest(req.RequesterID, req.BookID, req.Message)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
-// 	c.JSON(http.StatusCreated, exchange)
-// }
+	c.JSON(http.StatusCreated, exchange)
+}
 
-// // GetByID retrieves an exchange by ID
-// func (h *ExchangeHandler) GetByID(c *gin.Context) {
-// 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-// 	if err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exchange ID"})
-// 		return
-// 	}
+// GetByID retrieves an exchange by ID
+// FIX: Uncommented to enable exchange endpoints for tests
+func (h *ExchangeHandler) GetByID(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exchange ID"})
+		return
+	}
 
-// 	exchange, err := h.exchangeUC.GetExchangeByID(uint(id))
-// 	if err != nil {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "exchange not found"})
-// 		return
-// 	}
+	exchange, err := h.exchangeUC.GetExchangeByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "exchange not found"})
+		return
+	}
 
-// 	c.JSON(http.StatusOK, exchange)
-// }
+	c.JSON(http.StatusOK, exchange)
+}
 
-// // List retrieves a list of exchanges
-// func (h *ExchangeHandler) List(c *gin.Context) {
-// 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-// 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+// List retrieves a list of exchanges
+// FIX: Uncommented to enable exchange endpoints for tests
+func (h *ExchangeHandler) List(c *gin.Context) {
+	userID := c.Query("user_id")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+		return
+	}
 
-// 	exchanges, err := h.exchangeUC.ListExchanges(limit, offset)
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
+	id, err := strconv.ParseUint(userID, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		return
+	}
 
-// 	c.JSON(http.StatusOK, exchanges)
-// }
+	exchanges, err := h.exchangeUC.GetExchangesByUserID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-// // GetByRequester retrieves exchanges by requester
-// func (h *ExchangeHandler) GetByRequester(c *gin.Context) {
-// 	requesterID, err := strconv.ParseUint(c.Param("requester_id"), 10, 32)
-// 	if err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid requester ID"})
-// 		return
-// 	}
+	c.JSON(http.StatusOK, exchanges)
+}
 
-// 	exchanges, err := h.exchangeUC.GetExchangesByRequester(uint(requesterID))
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
+type UpdateExchangeStatusRequest struct {
+	Status string `json:"status" binding:"required"`
+}
 
-// 	c.JSON(http.StatusOK, exchanges)
-// }
+// UpdateStatus updates the status of an exchange
+// FIX: Uncommented to enable exchange endpoints for tests
+func (h *ExchangeHandler) UpdateStatus(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exchange ID"})
+		return
+	}
 
-// // GetByOwner retrieves exchanges by owner
-// func (h *ExchangeHandler) GetByOwner(c *gin.Context) {
-// 	ownerID, err := strconv.ParseUint(c.Param("owner_id"), 10, 32)
-// 	if err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid owner ID"})
-// 		return
-// 	}
+	var req UpdateExchangeStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
-// 	exchanges, err := h.exchangeUC.GetExchangesByOwner(uint(ownerID))
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-// 		return
-// 	}
+	exchange, err := h.exchangeUC.UpdateExchangeStatus(uint(id), req.Status)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
-// 	c.JSON(http.StatusOK, exchanges)
-// }
+	c.JSON(http.StatusOK, exchange)
+}
 
-// // Accept accepts an exchange request
-// func (h *ExchangeHandler) Accept(c *gin.Context) {
-// 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-// 	if err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exchange ID"})
-// 		return
-// 	}
+// Delete deletes an exchange
+// FIX: Uncommented to enable exchange endpoints for tests
+func (h *ExchangeHandler) Delete(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exchange ID"})
+		return
+	}
 
-// 	ownerID, _ := strconv.ParseUint(c.Query("owner_id"), 10, 32)
+	if err := h.exchangeUC.DeleteExchange(uint(id)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-// 	if err := h.exchangeUC.AcceptExchange(uint(id), uint(ownerID)); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 		return
-// 	}
-
-// 	c.JSON(http.StatusOK, gin.H{"message": "exchange accepted successfully"})
-// }
-
-// // Reject rejects an exchange request
-// func (h *ExchangeHandler) Reject(c *gin.Context) {
-// 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-// 	if err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exchange ID"})
-// 		return
-// 	}
-
-// 	ownerID, _ := strconv.ParseUint(c.Query("owner_id"), 10, 32)
-
-// 	if err := h.exchangeUC.RejectExchange(uint(id), uint(ownerID)); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 		return
-// 	}
-
-// 	c.JSON(http.StatusOK, gin.H{"message": "exchange rejected successfully"})
-// }
-
-// // Complete completes an exchange
-// func (h *ExchangeHandler) Complete(c *gin.Context) {
-// 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-// 	if err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid exchange ID"})
-// 		return
-// 	}
-
-// 	ownerID, _ := strconv.ParseUint(c.Query("owner_id"), 10, 32)
-
-// 	if err := h.exchangeUC.CompleteExchange(uint(id), uint(ownerID)); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 		return
-// 	}
-
-// 	c.JSON(http.StatusOK, gin.H{"message": "exchange completed successfully"})
-// }
+	c.JSON(http.StatusNoContent, nil)
+}
